@@ -1,0 +1,19 @@
+JOB TRACKER  -  free, offline job-search tracker for Mac
+=========================================================
+
+The full guide: double-click README.html in this folder (it opens in your web browser).
+(README.md is the same guide; GitHub shows it on the project page.)
+
+QUICK START
+  1. Keep this whole folder together somewhere permanent, e.g. Documents/Job Tracker.
+  2. First run of Setup: open Terminal, type  bash  and a space, drag Setup.command into the
+     window, press Enter. After that, every .command file opens with a double-click.
+  3. Open Job_Tracker.xlsx and fill in the yellow cells on the Settings, Areas and Watchlist tabs.
+  4. Use it:
+       Add Job        paste a job link -> the job is read, scored and saved
+       Check Jobs     new postings at the companies on your Watchlist tab
+       Check Email    application statuses from Gmail
+       Rescore Jobs   re-rate saved jobs after changing your Settings
+
+Updating: download the new version, double-click its Install Update, drag this folder in when asked.
+Your tracker, logins and saved postings are never touched.

@@ -1,0 +1,14 @@
+# Personal data and machine-specific files: never upload these
+app/.venv/
+app/backups/
+app/debug/
+app/__pycache__/
+app/accounts.json
+app/state.json
+app/watch_state.json
+app/places.json
+Postings/*
+!Postings/.keep
+~$*.xlsx
+*(saving).xlsx
+.DS_Store

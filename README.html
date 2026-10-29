@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Tracker guide</title>
+<style>
+:root { --bg:#ffffff; --fg:#1f2328; --muted:#59636e; --line:#d1d9e0; --code:#f6f8fa; --link:#0969da; --head:#f6f8fa; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --line:#3d444d; --code:#151b23; --link:#4493f8; --head:#151b23; } }
+html { background:var(--bg); }
+body { background:var(--bg); color:var(--fg); font:16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+       max-width: 900px; margin: 0 auto; padding: 32px 16px 80px; }
+h1, h2 { border-bottom:1px solid var(--line); padding-bottom:.3em; }
+h1 { font-size:2em; } h2 { font-size:1.5em; margin-top:2em; } h3 { font-size:1.2em; margin-top:1.6em; }
+a { color:var(--link); text-decoration:none; } a:hover { text-decoration:underline; }
+code { background:var(--code); padding:.15em .4em; border-radius:6px; font:85% ui-monospace, SFMono-Regular, Menlo, monospace; }
+pre { background:var(--code); padding:14px; border-radius:6px; overflow:auto; } pre code { padding:0; background:none; }
+table { border-collapse:collapse; display:block; overflow:auto; margin:1em 0; }
+th, td { border:1px solid var(--line); padding:6px 12px; vertical-align:top; } th { background:var(--head); text-align:left; }
+blockquote { color:var(--muted); border-left:4px solid var(--line); margin:0; padding:0 1em; }
+li { margin:.2em 0; }
+</style></head>
+<body>
+<h1 id="job-tracker">Job Tracker</h1>
+<p>A free job-search tracker for Mac. It keeps everything in one Excel file, reads job postings for you, ranks them, watches your favorite companies for new openings and updates application statuses from Gmail.</p>
+<p>Job Tracker runs on your own Mac. Your jobs, emails and resume details stay on your computer. Nothing is sent to an AI company, and there is no account or subscription.</p>
+<p>It's built for people who apply to a lot of jobs and are tired of copying titles, pay and locations into a spreadsheet by hand. You paste a job link, and it fills in the company, title, pay, location, perks, office days, posted date and deadline. It then gives the job a <strong>Priority score (0–100)</strong> based on location, pay, how well the job fits you and its perks.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#what-it-does">What it does</a></li>
+<li><a href="#privacy">Privacy</a></li>
+<li><a href="#requirements">Requirements</a></li>
+<li><a href="#install">Install</a></li>
+<li><a href="#first-things-to-set">First things to set</a></li>
+<li><a href="#usage">Usage</a><ul>
+<li><a href="#add-job">Add Job</a></li>
+<li><a href="#check-jobs-the-job-watcher">Check Jobs (the job watcher)</a></li>
+<li><a href="#check-email">Check Email</a></li>
+<li><a href="#rescore-jobs">Rescore Jobs</a></li>
+</ul>
+</li>
+<li><a href="#the-spreadsheet">The spreadsheet</a></li>
+<li><a href="#how-the-priority-score-works">How the Priority score works</a></li>
+<li><a href="#adding-a-company">Adding a company</a></li>
+<li><a href="#starter-packs">Starter packs</a></li>
+<li><a href="#supported-job-sites">Supported job sites</a></li>
+<li><a href="#updating">Updating</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#uninstall">Uninstall</a></li>
+<li><a href="#contributing">Contributing</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="what-it-does">What it does</h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it's for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Add Job</strong></td>
+<td>Paste a job link and it reads the posting: company, title, pay, location, remote/hybrid/on-site, office days per week, perks (bonus, 401k match, equity, relocation, PTO…), posted date and deadline. It asks whether you've applied and saves the job with a Priority score.</td>
+</tr>
+<tr>
+<td><strong>Check Jobs</strong></td>
+<td>Watches the careers pages of companies you list and shows <strong>new</strong> postings that match your title keywords and locations. You pick which ones to add.</td>
+</tr>
+<tr>
+<td><strong>Check Email</strong></td>
+<td>Reads your Gmail (read-only) and updates each application's status: received, interview, rejection, offer. It suggests follow-ups and marks jobs as Ghosted after a set time.</td>
+</tr>
+<tr>
+<td><strong>Rescore Jobs</strong></td>
+<td>Re-rates every saved job after you change your settings (keywords, background, pay target…).</td>
+</tr>
+</tbody>
+</table>
+<p>The full text of every posting is saved in the <strong>Postings</strong> folder, so you still have it after the job site takes it down. That's handy for interview prep.</p>
+<h2 id="privacy">Privacy</h2>
+<ul>
+<li><strong>Everything stays on your Mac.</strong> The tracker is an ordinary Excel file in your folder.</li>
+<li><strong>The AI is local.</strong> The optional AI helper uses <a href="https://ollama.com">Ollama</a>, a free and open-source app, with the Qwen3 model. It runs on your computer, with no cloud AI and no API keys.</li>
+<li><strong>Gmail is read-only.</strong> Check Email reads your inbox using a Google <em>app password</em>. The password is stored in your Mac's <strong>Keychain</strong>, not in a file. The tool never sends, deletes or changes emails.</li>
+<li><strong>Job sites see a normal visitor.</strong> Check Jobs reads the same public job lists a visitor to the company's careers page sees, a few requests at a time.</li>
+</ul>
+<h2 id="requirements">Requirements</h2>
+<ul>
+<li>A <strong>Mac</strong> (Apple silicon or Intel) with a recent version of macOS</li>
+<li><strong>Microsoft Excel</strong>, for opening the tracker</li>
+<li>About <strong>3 GB of free space</strong> for the optional AI model (about 6 GB for the larger model), plus about 200 MB for the app</li>
+<li>A <strong>Gmail</strong> account, only if you want Check Email</li>
+<li>An internet connection for setup and for reading job postings. The tracker file itself opens offline.</li>
+</ul>
+<p>Python is installed automatically if your Mac doesn't have it (Setup will prompt you).</p>
+<h2 id="install">Install</h2>
+<p>Setup takes about 20 minutes and is done once.</p>
+<ol>
+<li><strong>Download.</strong> On this GitHub page, click the green <strong>Code</strong> button, then <strong>Download ZIP</strong>. Unzip it.</li>
+<li><strong>Move the folder</strong> somewhere permanent, such as <code>Documents/Job Tracker</code>. Keep everything in that folder together.</li>
+<li><strong>Run Setup the first time from Terminal.</strong> macOS blocks double-clicking downloaded scripts until they've been run once.<ul>
+<li>Open <strong>Terminal</strong>: press Cmd+Space, type <code>Terminal</code>, press Enter.</li>
+<li>Type <code>bash</code> (with a space), drag <strong>Setup.command</strong> from your folder into the Terminal window, and press Enter.</li>
+<li>After this first run, every <code>.command</code> file in the folder opens with a normal double-click.</li>
+</ul>
+</li>
+<li><strong>Setup walks you through three steps:</strong><ol>
+<li><strong>Python libraries.</strong> If macOS offers to install "command line developer tools", click <strong>Install</strong>, wait for it to finish, then run Setup again.</li>
+<li><strong>Gmail accounts</strong> (optional, for Check Email). For each account:<ul>
+<li>Turn on <a href="https://myaccount.google.com/signinoptions/twosv">2-Step Verification</a>.</li>
+<li>Create an <a href="https://myaccount.google.com/apppasswords">app password</a> and paste it when Setup asks.</li>
+<li>Make sure IMAP is on: Gmail → Settings → See all settings → Forwarding and POP/IMAP.</li>
+</ul>
+</li>
+<li><strong>Free local AI</strong> (optional, recommended). Download <a href="https://ollama.com/download">Ollama</a>, drag it to Applications, open it once, then run Setup again. Setup downloads the AI model (about 2.5 GB) and runs a quick speed test.</li>
+</ol>
+</li>
+</ol>
+<p>You can run Setup again any time, for example to add an email account or switch AI models. It skips anything that's already done.</p>
+<h2 id="first-things-to-set">First things to set</h2>
+<p>Open <strong>Job_Tracker.xlsx</strong> and fill in the <strong>yellow cells</strong>. Most results depend on these.</p>
+<p><strong>Settings tab:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Home (city, state) and max commute</td>
+<td><code>Denver, CO</code>, 40 miles</td>
+</tr>
+<tr>
+<td>Target and minimum total pay</td>
+<td>95000 / 75000</td>
+</tr>
+<tr>
+<td>Fit keywords: what you want to work on</td>
+<td><code>CAD, robotics, test, medical devices</code></td>
+</tr>
+<tr>
+<td>My background: 3–8 lines about your degree, experience, tools and what you want (and don't want)</td>
+<td>Used by the AI to rate fit</td>
+</tr>
+<tr>
+<td>My years of experience</td>
+<td>2</td>
+</tr>
+<tr>
+<td>Dealbreaker words in the job title</td>
+<td><code>Senior, Director</code></td>
+</tr>
+<tr>
+<td>Watch: title keywords, skip words and locations</td>
+<td>For Check Jobs (see below)</td>
+</tr>
+</tbody>
+</table>
+<p>The rest of Settings (points per perk, office-day scores, weights) has sensible defaults you can change later.</p>
+<p><strong>Areas tab.</strong> It starts empty. List the metros you'd move to, from most to least preferred, each with a center city, a radius and extra points (e.g. <code>Boston metro | Boston, MA | 40 | 1</code>). A row with just a state code (e.g. <code>CO</code>) covers the whole state. Order matters: a job counts toward the first row it falls in.</p>
+<p><strong>Watch: locations to include</strong> starts as <code>Home, Area, Region, Remote, Elsewhere</code> (all of the US). Once your Home and Areas are set, remove <code>Elsewhere</code> to see only the places you'd consider.</p>
+<p><strong>Watchlist tab.</strong> It starts with five example companies from different fields, all paused (Active = No). Turn on the ones you want, delete the rest, and add your own: see <a href="#adding-a-company">Adding a company</a> and <a href="#starter-packs">Starter packs</a>.</p>
+<p><strong>Better AI fit scores:</strong> in Settings, change <strong>AI model</strong> to <code>qwen3:8b</code> if your Mac has 16 GB of memory or more, then run Setup again. It's slower, but noticeably better at judging fit.</p>
+<h2 id="usage">Usage</h2>
+<p>Double-click any of these in your Job Tracker folder. If Excel has the tracker open, the tool asks you to save and close it first.</p>
+<h3 id="add-job">Add Job</h3>
+<ol>
+<li>Copy a job link (from LinkedIn, a company site, Indeed and so on).</li>
+<li>Double-click <strong>Add Job</strong>. It offers the link you just copied, so press Enter, or paste a different one.</li>
+<li>
+<p>Check what it found. Press <strong>Enter</strong> if it looks right, or type fixes, for example:
+   <code>title=Mechanical Engineer   pay=80000-95000   location=Boston, MA   days=3   deadline=11/14</code></p>
+</li>
+<li>
+<p>Answer <strong>Applied already? (y/n)</strong>. If yes, it asks which resume version you sent.</p>
+</li>
+<li>The job is saved with its Priority score and a short fit note, and the posting is copied so you can paste it into your resume-tailoring tool.</li>
+</ol>
+<p><strong>Notes:</strong></p>
+<ul>
+<li><strong>Some sites (Apple, Motional and others) build pages with code the tool can't read.</strong> If the details look wrong, open the posting in your browser, select all and copy (Cmd+A, Cmd+C), then type <code>c</code> at the review prompt.</li>
+<li><strong>Pasting a link for a job you already have</strong> offers <code>r</code> to re-read it, or <code>a</code> to mark it applied.</li>
+</ul>
+<h3 id="check-jobs-the-job-watcher">Check Jobs (the job watcher)</h3>
+<p>Each row on the <strong>Watchlist</strong> tab is one company: its name and the link to its careers page or job board. Double-click <strong>Check Jobs</strong>:</p>
+<ul>
+<li><strong>s</strong> = scan for new jobs (quick, no AI)</li>
+<li><strong>a</strong> = add the jobs you marked <strong>Add</strong> on the <strong>New Matches</strong> tab (reads each one with the AI)</li>
+<li><strong>b</strong> = both</li>
+</ul>
+<p>A scan lists postings that are <strong>new</strong>, have one of your <strong>title keywords</strong>, contain none of your <strong>skip words</strong> or <strong>senior-level words</strong>, and are in a <strong>location</strong> you'd consider. Type the numbers of the ones you want to add, or review them later on the New Matches tab: set <strong>Action = Add</strong> to add one, or <strong>Dismiss</strong> to hide it.</p>
+<p><strong>Watchlist columns:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Careers link</td>
+<td>The company's job board. See <a href="#supported-job-sites">Supported job sites</a></td>
+</tr>
+<tr>
+<td>Extra title keywords</td>
+<td>Added to your main keyword list for this company. Start with <code>only:</code> to use <strong>only</strong> these, e.g. <code>only: structural, civil, facade</code></td>
+</tr>
+<tr>
+<td>Active</td>
+<td><code>No</code> pauses the company</td>
+</tr>
+<tr>
+<td>Priority</td>
+<td>1, 2, 3… Check Jobs asks which priority to scan (Enter = 1). Put huge or slow companies at 2 or 3 and scan them on other days</td>
+</tr>
+<tr>
+<td>My notes</td>
+<td>Your own notes, e.g. "HQ Philadelphia, big in Boston"</td>
+</tr>
+<tr>
+<td>Where they post (auto)</td>
+<td>Filled in each scan, e.g. "Boston metro 7 · Elsewhere 16"</td>
+</tr>
+<tr>
+<td>Last checked / Last result</td>
+<td>When it was scanned and what happened ("290 postings scanned, 3 new matches")</td>
+</tr>
+</tbody>
+</table>
+<p><strong>How far back it looks:</strong></p>
+<ul>
+<li><strong>A company's first scan:</strong> for a small company (60 postings or fewer), every matching job that's still open; for a big company, the last 14 days.</li>
+<li><strong>Later scans:</strong> the days since that company's last scan, plus 2, between 7 and 14.</li>
+<li><strong>No repeats:</strong> a job is never listed twice, and never if it's already in your tracker.</li>
+<li><strong>Warnings:</strong> Check Jobs warns you when a priority group hasn't been scanned in 10 days.</li>
+<li><strong>Settings:</strong> all of these numbers are under <strong>JOB WATCHER</strong>.</li>
+</ul>
+<p><strong>After the priority question,</strong> it asks <strong>"Just some areas this time?"</strong>. Press Enter for all your locations, or type part of an area name to see only matches there (<code>boston</code>, <code>LA</code>). For several areas, separate them with commas: <code>NYC metro, New Jersey</code>.</p>
+<p><strong>Tips:</strong></p>
+<ul>
+<li><strong>Big companies</strong> (thousands of postings) work best with a few specific keywords: <code>only: mechanical, design engineer</code>.</li>
+<li><strong>Exact phrases:</strong> quotes require the words together, in order. <code>"product engineer"</code> won't match "Product Deployment Engineer".</li>
+<li><strong>Grow your skip words</strong> from what you dismiss, e.g. <code>electrical, software, sales, HVAC</code>.</li>
+<li><strong>Senior filter:</strong> <strong>Watch: senior-level title words</strong> and <strong>Watch: level words</strong> are plain lists you can edit. At consulting firms, add <code>Associate</code> if it's a senior title there.</li>
+</ul>
+<h3 id="check-email">Check Email</h3>
+<p>Double-click <strong>Check Email</strong>. It reads recent emails from the accounts you added in Setup and:</p>
+<ul>
+<li><strong>Matches each email to a job</strong> in your tracker (or adds the job if it's a confirmation for one you didn't track).</li>
+<li><strong>Updates the Status:</strong> Applied, Screening, Assessment, Interview, Offer, Rejected.</li>
+<li><strong>Suggests follow-ups</strong> after 10 days without a reply, and marks <strong>Ghosted</strong> after 30 (both changeable in Settings).</li>
+<li><strong>Logs every change</strong> on the <strong>Activity Log</strong> tab, and puts emails it isn't sure about on <strong>Needs Review</strong>, so you can check them and mark <strong>Done? = Yes</strong>.</li>
+</ul>
+<p><strong>Phone tip:</strong> email yourself a job link with "job" in the subject. The next Check Email adds it, or marks it applied if the subject also says "applied".</p>
+<h3 id="rescore-jobs">Rescore Jobs</h3>
+<p>After changing your keywords, background, pay target or AI model, double-click <strong>Rescore Jobs</strong>. It re-rates every job on To Apply (or every job, if you choose) and shows each change. Jobs whose saved posting looks incomplete are listed so you can re-read them (Add Job → paste the link → <code>r</code>).</p>
+<h2 id="the-spreadsheet">The spreadsheet</h2>
+<table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>What's on it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>To Apply</strong></td>
+<td>Jobs you haven't applied to, best Priority first. Jobs closing within 3 days get a boost.</td>
+</tr>
+<tr>
+<td><strong>New Matches</strong></td>
+<td>New postings from Check Jobs, waiting for you to Add or Dismiss.</td>
+</tr>
+<tr>
+<td><strong>Applied</strong></td>
+<td>Applications in progress; anything needing action is at the top.</td>
+</tr>
+<tr>
+<td><strong>Closed</strong></td>
+<td>Rejected, Ghosted, Withdrawn, Skipped and Declined.</td>
+</tr>
+<tr>
+<td><strong>Needs Review / Activity Log</strong></td>
+<td>From Check Email (see above).</td>
+</tr>
+<tr>
+<td><strong>Watchlist</strong></td>
+<td>Companies for Check Jobs.</td>
+</tr>
+<tr>
+<td><strong>Settings / Areas</strong></td>
+<td>Your preferences (see <a href="#first-things-to-set">First things to set</a>).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Notes:</strong></p>
+<ul>
+<li><strong>Jobs move between tabs on their own.</strong> Change a job's <strong>Status</strong> or <strong>Applied?</strong> cell and it moves on the next run.</li>
+<li><strong>Columns with a lighter header are formulas</strong> (Priority, Days Since Posted, Days Left, Est. Total Comp, Perks), so don't type in them. Fix a detail cell instead, e.g. set 401k Match to 4%, and they update instantly.</li>
+<li><strong>The [+] above the far-right columns</strong> opens the scoring details: each perk, the four scores, the sentence each perk came from, and the full description.</li>
+<li><strong>Backups:</strong> the last 15 versions of the tracker are kept in <code>app/backups</code>.</li>
+</ul>
+<h2 id="how-the-priority-score-works">How the Priority score works</h2>
+<p>Priority (0–100) is a weighted average of four scores out of 10 each. The weights are on the Settings tab.</p>
+<table>
+<thead>
+<tr>
+<th>Score</th>
+<th>Based on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Location</strong></td>
+<td>Home (within your commute) scores highest, then your Areas in order, then your preferred states (Region), then elsewhere. Remote and hybrid scores depend on office days per week.</td>
+</tr>
+<tr>
+<td><strong>Pay</strong></td>
+<td>Estimated total comp (base + bonus + 401k match + sign-on spread over 2 years) compared with your minimum and target. Missing pay gets a neutral score.</td>
+</tr>
+<tr>
+<td><strong>Fit</strong></td>
+<td>The AI compares the job's duties and requirements with your background, combined with your fit keywords and the experience level the job asks for.</td>
+</tr>
+<tr>
+<td><strong>Perks</strong></td>
+<td>Points per perk found in the posting (equity, strong health, PTO, gym, WFH stipend…).</td>
+</tr>
+</tbody>
+</table>
+<p>Every perk the AI reports is checked against the posting's own words, and the sentence it came from is saved, so you can always see why.</p>
+<h2 id="adding-a-company">Adding a company</h2>
+<p>Most companies take under a minute to add:</p>
+<ol>
+<li>Go to the company's careers page and copy its address, e.g. <code>https://careers.example.com</code>.</li>
+<li>Paste it into a new <strong>Watchlist</strong> row (Company in column A, link in column B) and run <strong>Check Jobs</strong>.</li>
+<li>Look at the row's <strong>Last result</strong>:<ul>
+<li><strong>"X postings scanned"</strong>: it works.</li>
+<li><strong>"Not supported"</strong>: open any one of the company's jobs, click <strong>Apply</strong>, and copy the address of the page that opens. That's usually the company's real job board. Paste it into the row instead and run Check Jobs again.</li>
+</ul>
+</li>
+</ol>
+<p><strong>Links that work</strong> usually contain one of these:</p>
+<table>
+<thead>
+<tr>
+<th>In the link</th>
+<th>Hiring system</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>myworkdayjobs.com</code> or <code>myworkdaysite.com</code></td>
+<td>Workday</td>
+</tr>
+<tr>
+<td><code>greenhouse.io</code></td>
+<td>Greenhouse</td>
+</tr>
+<tr>
+<td><code>lever.co</code></td>
+<td>Lever</td>
+</tr>
+<tr>
+<td><code>ashbyhq.com</code></td>
+<td>Ashby</td>
+</tr>
+<tr>
+<td><code>smartrecruiters.com</code></td>
+<td>SmartRecruiters</td>
+</tr>
+<tr>
+<td><code>eightfold.ai</code>, or <code>/careers?pid=</code> on a company site</td>
+<td>Eightfold</td>
+</tr>
+<tr>
+<td><code>icims.com</code></td>
+<td>iCIMS</td>
+</tr>
+<tr>
+<td><code>oraclecloud.com</code> or <code>/sites/CX_</code></td>
+<td>Oracle</td>
+</tr>
+<tr>
+<td><code>bamboohr.com</code>, <code>ats.rippling.com</code>, <code>breezy.hr</code>, <code>recruiting.paylocity.com</code></td>
+<td>BambooHR, Rippling, Breezy, Paylocity</td>
+</tr>
+</tbody>
+</table>
+<p>Company-branded sites built on SuccessFactors or Phenom are recognized from the page itself, so paste the careers page.</p>
+<p><strong>Shorten the link:</strong> for Workday, keep only the part up to the site name, e.g. <code>https://jj.wd5.myworkdayjobs.com/JJ</code>. For Greenhouse, Lever and Ashby, keep only the company's board, e.g. <code>https://job-boards.greenhouse.io/spacex</code>. A link to a single job works too.</p>
+<p><strong>Still not supported?</strong> Some companies use systems the watcher can't read (Taleo, Paycom, JazzHR, Dover, or fully custom sites like Amazon and IBM). Use the company's own job alert emails, and <a href="#contributing">request the site</a> on GitHub.</p>
+<h2 id="starter-packs">Starter packs</h2>
+<p>Ready-to-paste companies and keywords by field. Copy the rows you want into your <strong>Watchlist</strong> (Company in column A, link in column B), and use the suggested keywords in <strong>Settings → Watch: title keywords</strong> or as <code>only:</code> keywords on those rows. The same list is in <strong>companies.csv</strong> in this folder. Links were checked in October 2026; companies sometimes move their job boards, so if one stops working, use <a href="#adding-a-company">Adding a company</a> to find the new link.</p>
+<h3 id="civil-structural">Civil &amp; structural</h3>
+<p>Suggested keywords: <code>structural, structures, civil, building, enclosure, facade, façade, forensic, geotechnical, bridge, transportation</code></p>
+<table>
+<thead>
+<tr>
+<th>Company</th>
+<th>Careers link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Thornton Tomasetti</td>
+<td>https://careers.thorntontomasetti.com/us/en/search-results</td>
+</tr>
+<tr>
+<td>WSP</td>
+<td>https://emit.fa.ca3.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2001/jobs</td>
+</tr>
+<tr>
+<td>Arup</td>
+<td>https://jobs.arup.com/jobs/search/22120486</td>
+</tr>
+<tr>
+<td>Stantec</td>
+<td>https://hdhl.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs</td>
+</tr>
+<tr>
+<td>AECOM</td>
+<td>https://careers.smartrecruiters.com/AECOM2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="mechanical-robotics-automation">Mechanical, robotics &amp; automation</h3>
+<p>Suggested keywords: <code>mechanical, mechatronics, robotics, electromechanical, design engineer, test engineer, controls engineer</code></p>
+<table>
+<thead>
+<tr>
+<th>Company</th>
+<th>Careers link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Boston Dynamics</td>
+<td>https://bostondynamics.wd1.myworkdayjobs.com/Boston_Dynamics</td>
+</tr>
+<tr>
+<td>Agility Robotics</td>
+<td>https://boards.greenhouse.io/agilityrobotics</td>
+</tr>
+<tr>
+<td>Figure AI</td>
+<td>https://job-boards.greenhouse.io/figureai</td>
+</tr>
+<tr>
+<td>Skild AI</td>
+<td>https://job-boards.greenhouse.io/skildai-careers</td>
+</tr>
+<tr>
+<td>Intuitive</td>
+<td>https://careers.smartrecruiters.com/Intuitive</td>
+</tr>
+<tr>
+<td>Symbotic</td>
+<td>https://symbotic.wd504.myworkdayjobs.com/Symbotic</td>
+</tr>
+<tr>
+<td>Machina Labs</td>
+<td>https://jobs.lever.co/MachinaLabs</td>
+</tr>
+</tbody>
+</table>
+<h3 id="medical-devices">Medical devices</h3>
+<p>Suggested keywords: <code>mechanical, R&amp;D engineer, design engineer, product development engineer, test engineer, design quality</code></p>
+<table>
+<thead>
+<tr>
+<th>Company</th>
+<th>Careers link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Medtronic</td>
+<td>https://medtronic.wd1.myworkdayjobs.com/MedtronicCareers</td>
+</tr>
+<tr>
+<td>Johnson &amp; Johnson</td>
+<td>https://jj.wd5.myworkdayjobs.com/JJ</td>
+</tr>
+<tr>
+<td>Boston Scientific</td>
+<td>https://bostonscientific.eightfold.ai/careers?domain=bostonscientific.com</td>
+</tr>
+<tr>
+<td>Stryker</td>
+<td>https://stryker.wd1.myworkdayjobs.com/StrykerCareers</td>
+</tr>
+<tr>
+<td>Edwards Lifesciences</td>
+<td>https://edwards.wd5.myworkdayjobs.com/EdwardsCareers</td>
+</tr>
+<tr>
+<td>Insulet</td>
+<td>https://insulet.wd5.myworkdayjobs.com/insuletcareers</td>
+</tr>
+<tr>
+<td>Dexcom</td>
+<td>https://dexcom.wd1.myworkdayjobs.com/Dexcom</td>
+</tr>
+<tr>
+<td>ZOLL</td>
+<td>https://zoll.wd5.myworkdayjobs.com/ZOLLMedicalCorp</td>
+</tr>
+</tbody>
+</table>
+<h3 id="aerospace-space-defense">Aerospace, space &amp; defense</h3>
+<p>Suggested keywords: <code>mechanical, structures, propulsion, test engineer, integration engineer, design engineer</code></p>
+<table>
+<thead>
+<tr>
+<th>Company</th>
+<th>Careers link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SpaceX</td>
+<td>https://job-boards.greenhouse.io/spacex</td>
+</tr>
+<tr>
+<td>Blue Origin</td>
+<td>https://blueorigin.wd5.myworkdayjobs.com/BlueOrigin</td>
+</tr>
+<tr>
+<td>Rocket Lab</td>
+<td>https://job-boards.greenhouse.io/rocketlab</td>
+</tr>
+<tr>
+<td>Sierra Space</td>
+<td>https://sierraspace.wd1.myworkdayjobs.com/Sierra_Space_External_Career_Site</td>
+</tr>
+<tr>
+<td>Anduril</td>
+<td>https://job-boards.greenhouse.io/andurilindustries</td>
+</tr>
+<tr>
+<td>Boeing</td>
+<td>https://boeing.wd1.myworkdayjobs.com/EXTERNAL_CAREERS</td>
+</tr>
+<tr>
+<td>NASA JPL</td>
+<td>https://citjpl.wd5.myworkdayjobs.com/Jobs</td>
+</tr>
+</tbody>
+</table>
+<h3 id="semiconductors-hardware">Semiconductors &amp; hardware</h3>
+<p>Suggested keywords: <code>mechanical, process engineer, equipment engineer, test engineer, hardware engineer, product engineer</code></p>
+<table>
+<thead>
+<tr>
+<th>Company</th>
+<th>Careers link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KLA</td>
+<td>https://kla.wd1.myworkdayjobs.com/Search</td>
+</tr>
+<tr>
+<td>Microchip</td>
+<td>https://wd5.myworkdaysite.com/en-US/recruiting/microchiphr/External</td>
+</tr>
+<tr>
+<td>Apple</td>
+<td>https://jobs.apple.com/en-us/search</td>
+</tr>
+<tr>
+<td>Google</td>
+<td>https://www.google.com/about/careers/applications/jobs/results/</td>
+</tr>
+</tbody>
+</table>
+<h3 id="analysis-test-data-hardware-adjacent">Analysis, test &amp; data (hardware-adjacent)</h3>
+<p>Suggested keywords: <code>test engineer, validation engineer, reliability engineer, data analyst, systems engineer, analysis engineer</code></p>
+<table>
+<thead>
+<tr>
+<th>Company</th>
+<th>Careers link</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Draper</td>
+<td>https://draper.wd5.myworkdayjobs.com/Draper_Careers</td>
+</tr>
+<tr>
+<td>Philips</td>
+<td>https://philips.wd3.myworkdayjobs.com/jobs-and-careers</td>
+</tr>
+<tr>
+<td>Illumina</td>
+<td>https://illumina.wd1.myworkdayjobs.com/illumina-careers</td>
+</tr>
+<tr>
+<td>Stanley Black &amp; Decker</td>
+<td>https://sbdinc.wd1.myworkdayjobs.com/Stanley_Black_Decker_Career_Site</td>
+</tr>
+</tbody>
+</table>
+<h2 id="supported-job-sites">Supported job sites</h2>
+<p><strong>Add Job</strong> reads most job links, including Greenhouse, Lever, Workday, Ashby, SmartRecruiters, Eightfold, LinkedIn and pages with standard job data. For anything else, use the copy-the-page method (<code>c</code>).</p>
+<p><strong>Check Jobs</strong> reads these hiring systems:</p>
+<ul>
+<li>Workday</li>
+<li>Greenhouse</li>
+<li>Lever</li>
+<li>Ashby</li>
+<li>SmartRecruiters</li>
+<li>Eightfold</li>
+<li>SuccessFactors</li>
+<li>Phenom</li>
+<li>iCIMS</li>
+<li>Oracle Recruiting</li>
+<li>Paylocity</li>
+<li>BambooHR</li>
+<li>Rippling</li>
+<li>Breezy HR</li>
+<li>Apple's and Google's careers sites</li>
+<li>Arup's job site (jobs.arup.com). Search there (for example, location: United States), and put the results link (<code>https://jobs.arup.com/jobs/search/&lt;number&gt;</code>) on the Watchlist. If Arup later shows "0 postings read", the saved search has expired, so search again and paste the new link.</li>
+</ul>
+<p>Paste a company's careers page and it works out the system itself. If the Last result says <strong>Not supported</strong>, open one of that company's jobs, click <strong>Apply</strong>, and use the link of the page that opens. That's often the company's real job board. Companies on Taleo, Paycom, JazzHR or fully custom sites (e.g. Amazon, IBM) aren't supported; use their own job alerts.</p>
+<h2 id="updating">Updating</h2>
+<p>Updates never touch your tracker, Gmail logins, saved postings or AI model, and the old program files are backed up to <code>app/backups</code> first.</p>
+<ol>
+<li>Close Excel.</li>
+<li>Download the new version and unzip it.</li>
+<li>Open the new folder and double-click <strong>Install Update</strong>. The first time, right-click it and choose Open. When it asks, drag your existing Job Tracker folder into the window.</li>
+</ol>
+<p>The version number is shown at the top of Check Jobs, Add Job, Check Email and Rescore Jobs.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"cannot be opened because it is from an unidentified developer"</td>
+<td>Right-click the file → <strong>Open</strong> → <strong>Open</strong>. Or run Setup once from Terminal (see <a href="#install">Install</a>).</td>
+</tr>
+<tr>
+<td>The tracker file disappeared from Finder</td>
+<td>In Terminal: <code>chflags nohidden ~/Documents/"Job Tracker"/Job_Tracker.xlsx</code> (adjust the path to your folder).</td>
+</tr>
+<tr>
+<td>"The tracker is open in Excel"</td>
+<td>Save and close it (Cmd+S, then Cmd+W), then press Enter.</td>
+</tr>
+<tr>
+<td>AI is off, or "took over 75 seconds"</td>
+<td>Open the Ollama app once, run Setup again, or switch Settings → AI model to <code>qwen3:4b</code> (faster). Everything still works without AI, just less accurately.</td>
+</tr>
+<tr>
+<td>Add Job saved the wrong title or company</td>
+<td>Type fixes at the review prompt (<code>title=…</code>, <code>company=…</code>), or copy the posting page and type <code>c</code>.</td>
+</tr>
+<tr>
+<td>Check Jobs: "sent a web page instead of job data"</td>
+<td>The site was down or busy (e.g. a Workday outage). Try again in a few hours.</td>
+</tr>
+<tr>
+<td>Check Jobs: "0 postings read… send the file app/debug/…"</td>
+<td>The site's page format wasn't recognized. Open an issue on GitHub and attach that file.</td>
+</tr>
+<tr>
+<td>Check Jobs finds very few jobs</td>
+<td>Press Enter at "Just some areas this time?", check your title keywords and skip words, and remember a big company's first scan only looks back 14 days.</td>
+</tr>
+<tr>
+<td>Check Email can't log in</td>
+<td>Use an <strong>app password</strong> (not your normal password), and make sure IMAP is on in Gmail settings.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="uninstall">Uninstall</h2>
+<p>Delete the Job Tracker folder. If you installed Ollama and don't need it for anything else, drag it from Applications to the Trash and delete the <code>.ollama</code> folder in your home folder (press Cmd+Shift+. in Finder to show hidden folders). Gmail app passwords can be removed at <a href="https://myaccount.google.com/apppasswords">myaccount.google.com/apppasswords</a>.</p>
+<h2 id="contributing">Contributing</h2>
+<p>Questions, bugs and ideas are welcome. Please use <strong>Issues</strong> on this GitHub page. When reporting a problem, include:</p>
+<ul>
+<li>the message you saw (a screenshot of the Terminal window is fine),</li>
+<li>the version number shown at the top of the tool,</li>
+<li>for Check Jobs problems, the company's careers link and any file the message asked you to send.</li>
+</ul>
+<p><strong>Request a job site:</strong> if a company still says "Not supported" after trying its Apply-page link, open an Issue using the <strong>Request a job site</strong> template and fill in the company, its careers link and the Apply-page link.</p>
+<p><strong>Suggest companies:</strong> good companies and links for the <a href="#starter-packs">starter packs</a> are welcome. Open an Issue, or edit <strong>companies.csv</strong>.</p>
+<p>Please don't post your tracker file, emails or app passwords in an issue.</p>
+<h2 id="license">License</h2>
+<p><a href="LICENSE" title="The LICENSE file in this folder">MIT</a> © Job Tracker contributors</p>
+</body></html>
