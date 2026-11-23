@@ -178,6 +178,14 @@ def discover(url: str):
                 return "Eightfold", {"host": u.netloc, "domain": domain}, ""
         except Exception:
             pass
+    try:  # the newer Eightfold feed
+        r = requests.get(f"https://{u.netloc}/api/pcsx/search", params={"domain": domain, "query": "", "location": "",
+                         "start": 0}, headers={**H, "Accept": "application/json"}, timeout=15)
+        data = (r.json() or {}).get("data") if r.status_code == 200 else None
+        if isinstance(data, dict) and isinstance(data.get("positions"), list):
+            return "Eightfold", {"host": u.netloc, "domain": domain}, ""
+    except Exception:
+        pass
     if re.search(r"eightfold", html, re.I) or re.search(r"/careers/job/\d+", url):
         return "Eightfold", {"host": u.netloc, "domain": domain}, ""
     return None, {}, "couldn't tell which hiring system this careers page uses"
@@ -398,7 +406,36 @@ def fetch_smartrecruiters(p, terms):
     return list(out.values())
 
 
+PCSX_PAGES = 5        # x 10 jobs per keyword on the newer Eightfold feed
+PCSX_DELAY = 1.2      # seconds between requests: Eightfold limits fast readers
+PCSX_WAITS = (8, 20)  # when asked to slow down: wait this long, then try again
+
+
+def _eightfold_job(p, j):
+    jid = str(j.get("id") or j.get("positionId") or "")
+    locs = j.get("locations") or ([j["location"]] if j.get("location") else [])
+    if isinstance(locs, str):
+        locs = [locs]
+    url = j.get("canonicalPositionUrl") or j.get("positionUrl") or f"/careers/job/{jid}"
+    if url.startswith("/"):
+        url = f"https://{p['host']}{url}"
+    return _p(jid, j.get("name") or j.get("title") or j.get("posting_name"),
+              "; ".join(str(l).replace(", United States", "") for l in locs[:3]), url,
+              _ts(j.get("postedTs") or j.get("t_create") or j.get("t_update")))
+
+
 def fetch_eightfold(p, terms):
+    """Eightfold has two job feeds. Companies still on the older one keep working as before; companies Eightfold has
+    moved to the newer 'PCSX' feed (the old one answers 403 for them) are read from that instead."""
+    try:
+        return _eightfold_v2(p, terms)
+    except requests.HTTPError as e:
+        if getattr(e.response, "status_code", 0) not in (401, 403, 404):
+            raise
+    return _eightfold_pcsx(p, terms)
+
+
+def _eightfold_v2(p, terms):
     out = {}
     for term in terms or [""]:
         r = requests.get(f"https://{p['host']}/api/apply/v2/jobs", headers=H, timeout=25,
@@ -408,12 +445,46 @@ def fetch_eightfold(p, terms):
         if not term and data.get("count"):
             BOARD_SIZE["Eightfold"] = int(data["count"])
         for j in data.get("positions") or []:
-            jid = str(j.get("id"))
-            if jid in out:
-                continue
-            locs = j.get("locations") or ([j["location"]] if j.get("location") else [])
-            out[jid] = _p(jid, j.get("name"), "; ".join(str(l).replace(", United States", "") for l in locs[:3]),
-                          j.get("canonicalPositionUrl") or f"https://{p['host']}/careers/job/{jid}", _ts(j.get("t_create")))
+            job = _eightfold_job(p, j)
+            out.setdefault(job["id"], job)
+    return list(out.values())
+
+
+def _eightfold_pcsx(p, terms):
+    """Newer feed: 10 jobs a page, searched by keyword (and United States, unless you include Outside US)."""
+    out, partial = {}, False
+    hdr = {**H, "Accept": "application/json"}
+    for term in [t for t in terms if t] or [""]:
+        for page in range(PCSX_PAGES):
+            params = {"domain": p["domain"], "query": term, "location": "United States" if US_ONLY else "",
+                      "start": page * 10}
+            r = requests.get(f"https://{p['host']}/api/pcsx/search", params=params, headers=hdr, timeout=25)
+            for wait in PCSX_WAITS:
+                if r.status_code not in (405, 429):
+                    break
+                time.sleep(wait)  # asked to slow down: pause, then try the same page again
+                r = requests.get(f"https://{p['host']}/api/pcsx/search", params=params, headers=hdr, timeout=25)
+            if r.status_code in (405, 429):  # still blocked: keep what was read
+                partial = True
+                break
+            r.raise_for_status()
+            data = (r.json() or {}).get("data") or {}
+            if not term and data.get("count"):
+                BOARD_SIZE["Eightfold"] = int(data["count"])
+            rows = data.get("positions") or []
+            for j in rows:
+                job = _eightfold_job(p, j)
+                if job["id"]:
+                    out.setdefault(job["id"], job)
+            time.sleep(PCSX_DELAY)
+            if len(rows) < 10 or (page + 1) * 10 >= int(data.get("count") or 0):
+                break
+        if partial:
+            break
+    if partial:
+        if not out:
+            raise NotJobData("Eightfold asked to slow down")
+        FETCH_NOTE["Eightfold"] = "(Eightfold asked to slow down partway; some keyword searches skipped)"
     return list(out.values())
 
 
@@ -1280,7 +1351,12 @@ def run(tr, interactive=True, priorities=None, area=None):
             continue
         w["where"] = where_summary(posts, geo_cfg) or w.get("where")
         first_scan = not isinstance(to_date(w.get("checked")), dt.date)
-        board = BOARD_SIZE.get(sysname) or len(posts)
+        # Size is only known when the site says so, or when it hands over its whole job list. Keyword-search sites
+        # (Workday, Eightfold, SuccessFactors...) only show search results, so an unknown size counts as big.
+        whole_list = sysname in ("Greenhouse", "Lever", "Ashby", "BambooHR", "Rippling", "Breezy", "Paylocity", "Arup")
+        board = BOARD_SIZE.get(sysname) or (len(posts) if whole_list else small + 1)
+        if sysname in FETCH_NOTE:
+            board = small + 1  # a partial read can't show a company is small
         if first_scan and small and board <= small:
             window = None  # small company, first look: every matching job that's still open
             gap_note = " (first scan: small company, so every open matching job was checked, however old)"

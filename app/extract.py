@@ -290,11 +290,17 @@ def from_eightfold(url):
         domain = (q.get("domain") or [".".join(host.split(".")[-2:])])[0]
     r = requests.get(f"https://{host}/api/apply/v2/jobs/{pid}", params={"domain": domain},
                      headers={**HEADERS, "Accept": "application/json"}, timeout=20)
-    if r.status_code != 200 or "json" not in r.headers.get("content-type", "json"):
-        return None
-    j = r.json()
-    if not j.get("name"):
-        return None
+    j = r.json() if r.status_code == 200 and "json" in r.headers.get("content-type", "json") else {}
+    if not j.get("name"):  # companies on Eightfold's newer feed
+        r = requests.get(f"https://{host}/api/pcsx/position_details", params={"domain": domain, "position_id": pid,
+                         "hl": "en"}, headers={**HEADERS, "Accept": "application/json"}, timeout=20)
+        if r.status_code != 200:
+            return None
+        n = (r.json() or {}).get("data") or {}
+        if not n.get("name"):
+            return None
+        j = {"name": n.get("name"), "locations": n.get("locations") or ([n["location"]] if n.get("location") else []),
+             "job_description": n.get("jobDescription") or "", "work_location_option": n.get("workLocationOption")}
     locs = [str(x).replace(", United States", "") for x in (j.get("locations") or ([j["location"]] if j.get("location") else []))]
     d = {"title": j.get("name") or j.get("posting_name"), "company": domain.split(".")[0].replace("-", " ").title(),
          "location": "; ".join(locs[:3]) + (f" (+{len(locs) - 3} more)" if len(locs) > 3 else ""),
