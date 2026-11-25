@@ -309,7 +309,7 @@ def fetch_workday(p, terms):
                            workday_posted(j.get("postedOn")), {"_wd_detail": f"{base}{path}"})
 
     # 1) the board, newest first, until two pages in a row are entirely older than the window
-    old_pages = 0
+    old_pages, complete = 0, False
     try:
         for page in range(WORKDAY_WALK_PAGES):
             data = wd_post(p, f"{base}/jobs", {"appliedFacets": {}, "limit": 20, "offset": page * 20, "searchText": ""})
@@ -321,14 +321,16 @@ def fetch_workday(p, terms):
             old = bool(dates) and all(d is not None and (today() - d).days > WINDOW_DAYS for d in dates)
             old_pages = old_pages + 1 if old else 0
             if len(posts) < 20 or old_pages >= 2:
+                complete = True
                 break
             time.sleep(0.2)
     except NotJobData:
         if not out:
             raise  # nothing read at all: report it
         failed += 1
-    # 2) keyword searches (relevance order, first 60 results each)
-    for term in [t for t in terms if t]:
+    # 2) keyword searches (relevance order, first 60 results each); skipped on daily scans when step 1 already
+    #    reached the end of the window (they run once a week to catch jobs a board lists out of date order)
+    for term in ([] if (WALK_ONLY and complete) else [t for t in terms if t]):
         try:
             for page in range(WORKDAY_PAGES):
                 data = wd_post(p, f"{base}/jobs", {"appliedFacets": {}, "limit": 20, "offset": page * 20, "searchText": term})
@@ -627,6 +629,7 @@ DEBUG_DIR = APP_DIR / "debug"
 WINDOW_DAYS = 14      # set from Settings at the start of a run
 FETCH_NOTE = {}       # system -> note about a partial read
 WALK_INFO = {}        # system -> pages of the no-keyword newest-first list read (Apple, Google)
+WALK_ONLY = False     # True: skip the keyword searches when the newest-first read reached the end of the window
 BOARD_SIZE = {}       # system -> total postings on the company's board, when the site says
 _SESS = None
 
@@ -656,7 +659,7 @@ def _search_site(sysname, url, qkey, base_params, parser, terms):
     """First read the whole list newest-first (no keyword) back to your scan window, so every recent job is seen;
     then search each keyword the same way (catches anything the no-keyword list leaves out).
     A keyword that times out is skipped; if two in a row fail, stop and keep what was read."""
-    out, failed, streak = {}, [], 0
+    out, failed, streak, complete = {}, [], 0, False
     WALK_INFO[sysname] = 0
     try:
         for page in range(1, SITE_WALK_PAGES + 1):
@@ -667,13 +670,14 @@ def _search_site(sysname, url, qkey, base_params, parser, terms):
             out.update({j["id"]: j for j in new})
             dated = [j["posted"] for j in posts if j.get("posted")]
             if len(posts) < 15 or not new or (dated and all((today() - d).days > WINDOW_DAYS for d in dated)):
+                complete = True
                 break
             time.sleep(0.6)
     except HTTPError:
         raise
     except Exception:
         failed.append("(newest-first list)")
-    for term in [t for t in (terms or []) if t]:
+    for term in ([] if (WALK_ONLY and complete) else [t for t in (terms or []) if t]):
         try:
             for page in range(1, SITE_PAGES + 1):
                 r = site_get(url, {**base_params, qkey: term, "page": page})
@@ -1470,7 +1474,8 @@ def save_state(st):
 
 
 # ------------------------------------------------------------------ run
-MIN_WINDOW = 7
+MIN_WINDOW = 3  # daily scans overlap by at least a couple of days; the weekly keyword pass looks back the full window
+KEYWORD_PASS_DAYS = 7  # Workday/Apple/Google: keyword searches on top of the newest-first read, once a week
 HTML_SYSTEMS = {"Apple", "Google", "SuccessFactors", "Phenom", "iCIMS", "Paylocity", "Oracle", "BambooHR", "Rippling",
                 "JazzHR", "ApplicantStack", "Daedalus",
                 "Breezy", "Arup"}
@@ -1722,7 +1727,7 @@ def run(tr, interactive=True, priorities=None, area=None, deep=None):
     """Scan the Watchlist. priorities = a set like {1} or {1, 2}; None = every active company.
     area = part of an area name (e.g. 'boston'): only matches there are listed.
     deep = part of a company name: scan just that company (even if paused) for every open matching job, any age."""
-    global WINDOW_DAYS, DEBUG_TAG
+    global WINDOW_DAYS, DEBUG_TAG, WALK_ONLY
     import sheets
     s = tr.s
     wl = sheets.read_watchlist(tr.wb)
@@ -1793,6 +1798,14 @@ def run(tr, interactive=True, priorities=None, area=None, deep=None):
             continue
         w["system"] = sysname
         window, gap_note = window_for(w, s)
+        company_key = f"{sysname}:{json.dumps(params, sort_keys=True)}"
+        co_prev = st["co"].get(company_key) or {}
+        kw_last = _iso(co_prev.get("kw_pass") or "")
+        kw_due = sysname not in ("Workday", "Apple", "Google") or not isinstance(kw_last, dt.date) or \
+            (today() - kw_last).days >= KEYWORD_PASS_DAYS
+        WALK_ONLY = not kw_due and not deep
+        if kw_due and window is not None and sysname in ("Workday", "Apple", "Google"):
+            window = max(window, int(num(s.get("watch_days"), 14)))  # the weekly keyword pass looks back the full window
         if deep:
             window, gap_note = None, " (deep scan: every open matching job, any age)"
         WINDOW_DAYS = window if window is not None else 3650
@@ -1832,8 +1845,9 @@ def run(tr, interactive=True, priorities=None, area=None, deep=None):
         if first_scan and small and board <= small and not deep:
             window = None  # small company, first look: every matching job that's still open
             gap_note = " (first scan: small company, so every open matching job was checked, however old)"
-        company_key = f"{sysname}:{json.dumps(params, sort_keys=True)}"
         co = st["co"].setdefault(company_key, {"first": today().isoformat(), "last_match": None})
+        if not WALK_ONLY and sysname in ("Workday", "Apple", "Google"):
+            co["kw_pass"] = today().isoformat()
         new = 0
         if not posts and sysname in HTML_SYSTEMS:
             dbg = DEBUG_DIR / f"{DEBUG_TAG}.html"

@@ -162,7 +162,7 @@ All the lists are on Settings under **JOB WATCHER** (filter years, degree fields
 
 **How far back it looks:**
 - **A company's first scan:** for a small company (60 postings or fewer), every matching job that's still open; for a big company, the last 14 days.
-- **Later scans:** the days since that company's last scan, plus 2, between 7 and 14.
+- **Later scans:** the days since that company's last scan, plus 2, between 3 and 14.
 - **No repeats:** a job is never listed twice, and never if it's already in your tracker.
 - **Warnings:** Check Jobs warns you when a priority group hasn't been scanned in 10 days.
 - **Settings:** all of these numbers are under **JOB WATCHER**.
@@ -193,7 +193,7 @@ All the lists are on Settings under **JOB WATCHER** (filter years, degree fields
 **After the priority question,** it asks **"Just some areas this time?"**. Press Enter for all your locations, or type part of an area name to see only matches there (`boston`, `LA`). For several areas, separate them with commas: `NYC metro, New Jersey`.
 
 **Tips:**
-- **How big companies are searched:** on **Workday** sites, Check Jobs reads the company's whole board newest-first back to your scan window, then also runs all your keyword searches, so every recent matching title is found. **Apple and Google** are read the same way (their newest-first list, then your keyword searches). Other keyword-search sites (Eightfold, SuccessFactors, Phenom…) are searched with all your title keywords; Eightfold sites are read more slowly because they limit fast readers.
+- **How big companies are searched:** on **Workday** sites, Check Jobs reads the company's whole board newest-first back to your scan window, so every recent matching title is found. Once a week it also runs all your keyword searches over the full 14 days, to catch the rare job a board lists out of date order (the other days skip them, which makes daily scans much faster). **Apple and Google** are read the same way. Other keyword-search sites (Eightfold, SuccessFactors, Phenom…) are searched with all your title keywords; Eightfold sites are read more slowly because they limit fast readers.
 - **Big companies** (thousands of postings) work best with a few specific keywords: `only: mechanical, design engineer`.
 - **Exact phrases:** quotes require the words together, in order. `"product engineer"` won't match "Product Deployment Engineer".
 - **Grow your skip words** from what you dismiss, e.g. `software, sales, HVAC`. Phrases work too and are safer than single words: `electrical engineer, electrical design` skips those titles but keeps "Electrical/Mechanical Engineer" and "Electro-Mechanical Engineer".
