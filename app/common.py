@@ -265,6 +265,10 @@ SETTINGS = [
      "linear algebra, differential equations, Kalman",
      "Highlighted (never hidden) on the Review screen when a posting mentions them: things you may want to read closely.",
      True, None),
+    ("review_skip_reasons", "Review: skip reasons",
+     "systems, thermal, math/controls, CFD, wrong field (CS/EE/wireless), link broken / closed, not interested",
+     "The reasons offered when you skip a job on the Review screen (keys 1-9), comma-separated. 'Other' lets you type "
+     "your own.", True, None),
     ("watch_skill_dealbreakers", "Watch: required-skill dealbreakers", "",
      "Phrases that filter a posting when they appear in a REQUIRED line, e.g. production code, React. Blank = off.",
      True, None),

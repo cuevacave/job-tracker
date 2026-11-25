@@ -210,8 +210,8 @@ Double-click **Review Jobs** (first time: in Terminal, type `bash `, drag **Revi
 - **To review** shows your undecided New Matches, 5 at a time, in the [apply order](#the-apply-order). Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click **Description** or press **E**). The link is there too.
 - **Watch-out words** (Settings) are highlighted on the job and in its description, e.g. thermal or CFD. They never hide a job.
 - **The same job in several places** is one card listing each location; tick the ones you want and press Add (the others count as skipped).
-- **Add (A)** adds the job exactly like Check Jobs > a. **Skip (S)** dismisses it; press 1-5 for a reason or Enter for none. **Later (L)** moves it to the end for now.
-- When you've decided on all 5, they're saved to the workbook and the next 5 load. If the tracker is open in Excel, your decisions wait (the top bar says so) and are saved as soon as Excel is closed and you press **Save to workbook**, or the next time you open the screen.
+- **Add (A)** adds the job exactly like Check Jobs > a. **Skip (S)** dismisses it; press a number for a reason (yours are on Settings > **Review: skip reasons**), **O** to type your own, or Enter for none. **Later (L)** moves it to the end for now.
+- When you've decided on all 5, the next 5 load. Your decisions are recorded as you go and written to the workbook (and the jobs you added put on To Apply) when you press **Save to workbook** or **Done: save and close**, or close the Terminal window. If the tracker is open in Excel, close it first; anything not saved yet is saved the next time you open the screen.
 - **Greyed** shows the jobs the scan filtered; **Skipped** shows what you skipped, with a **Bring back** button; **Settings** edits your company groups, fit threshold and watch-out words.
 - **Every decision is kept** in `app/decisions.csv` (date, decision, reason and the job's details), so you can look back at what you add versus skip.
 

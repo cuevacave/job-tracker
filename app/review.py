@@ -14,6 +14,7 @@ import html
 import io
 import json
 import re
+import signal
 import sys
 import threading
 import time
@@ -35,9 +36,9 @@ PENDING = APP / "review_pending.json"
 PAGE = 5
 DEC_COLS = ["Date", "Time", "Decision", "Reason", "Company", "Title", "Location", "Tier", "Years", "Fit", "Apply Group",
             "Pay", "Posted", "Link", "Key", "Row"]
-SKIP_REASONS = ["systems", "thermal", "math/controls", "CFD", "not interested"]
 SETTING_KEYS = {"apply_referral": "Apply: referral companies", "apply_top": "Apply: top companies",
-                "apply_fit_min": "Apply: fit threshold", "review_watch_outs": "Review: watch-out words"}
+                "apply_fit_min": "Apply: fit threshold", "review_watch_outs": "Review: watch-out words",
+                "review_skip_reasons": "Review: skip reasons"}
 LATER = set()            # row keys put off during this session (shown last)
 LOCK = threading.Lock()  # one change at a time
 _VIEW = {"mtime": None}
@@ -320,7 +321,8 @@ def apply_now() -> dict:
 
 def status() -> dict:
     p = load_pending()
-    return {"pending": len(p["decisions"]) + (1 if p["settings"] else 0), "excel": excel_open()}
+    return {"pending": len(p["decisions"]) + (1 if p["settings"] else 0), "excel": excel_open(),
+            "adds": sum(1 for d in p["decisions"] if d["action"] == "Add")}
 
 
 # ------------------------------------------------------------------ web
@@ -350,7 +352,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "cards": [card_json(g, s) for g in part]})
             if u.path == "/api/settings":
                 s, _, _ = view()
-                return self._send({k: s.get(k) for k in SETTING_KEYS} | {"reasons": SKIP_REASONS})
+                reasons = [x.strip() for x in str(s.get("review_skip_reasons") or "").split(",") if x.strip()][:9]
+                return self._send({k: s.get(k) for k in SETTING_KEYS} | {"reasons": reasons})
             if u.path == "/api/status":
                 return self._send(status())
         except Exception as e:
@@ -367,6 +370,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(save_settings(body))
             if self.path == "/api/apply":
                 return self._send(apply_now())
+            if self.path == "/api/quit":
+                res = apply_now()
+                self._send(res)
+                if not load_pending()["decisions"]:
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return
         except Exception as e:
             return self._send({"error": f"{type(e).__name__}: {e}"}, code=500)
         self._send({"error": "not found"}, code=404)
@@ -401,53 +410,62 @@ button.act:hover{border-color:var(--acc)}main{max-width:980px;margin:0 auto;padd
 .nav{display:flex;gap:10px;align-items:center;justify-content:center;margin:18px 0;color:var(--mut)}
 .help{font-size:12.5px;color:var(--mut);text-align:center}.set label{display:block;font-weight:600;margin:14px 0 4px}.set textarea,.set input{width:100%;font:inherit;padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--fg)}
 .set .hint{font-size:13px;color:var(--mut)}a{color:var(--acc)}
+#cover{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 80%,transparent);display:none;align-items:center;justify-content:center;z-index:20;text-align:center}#cover.on{display:flex}#cover div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 28px;max-width:460px}
+.reasons input{font:inherit;font-size:13px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);display:none}.reasons.other input{display:inline-block}
 </style></head><body>
 <header><h1>Review jobs</h1>
 <div class="tabs"><button data-t="review" class="on">To review</button><button data-t="greyed">Greyed</button><button data-t="skipped">Skipped</button><button data-t="settings">Settings</button></div>
-<div class="sp"></div><span class="pend" id="pend"></span><button class="act" id="save">Save to workbook</button></header>
+<div class="sp"></div><span class="pend" id="pend"></span><button class="act" id="save">Save to workbook</button><button class="act" id="quit">Done: save and close</button></header>
+<div id="cover"><div><b id="covt">Saving to the workbook...</b><p id="covp"></p></div></div>
 <main><div class="msg" id="msg"></div><div id="list"></div><div class="nav" id="nav"></div>
-<p class="help">Keys: <b>A</b> add · <b>S</b> skip (then 1-5 for a reason, Enter for none) · <b>L</b> later · <b>J/K</b> next/previous job · <b>E</b> description · <b>N/P</b> next/previous 5</p></main>
+<p class="help">Keys: <b>A</b> add · <b>S</b> skip (then a number for the reason, <b>O</b> to type your own, Enter for none) · <b>L</b> later · <b>J/K</b> next/previous job · <b>E</b> description · <b>N/P</b> next/previous 5<br>Your decisions are recorded as you go and written to the workbook when you press <b>Save</b> or <b>Done</b> (or close the Terminal window).</p></main>
 <script>
 let tab="review",page=0,data=null,focus=0,reasons=[];
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function api(p,b){const r=await fetch(p,b?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}:{});return r.json()}
 function msg(t){const m=$("#msg");m.textContent=t||"";m.style.display=t?"block":"none"}
-function pend(st){$("#pend").innerHTML=st.pending?`<b>${st.pending}</b> decision(s) not in the workbook yet`+(st.excel?" · close the tracker in Excel to save":""):(st.excel?"Tracker is open in Excel":"All saved");$("#save").disabled=!st.pending}
+function pend(st){$("#pend").innerHTML=st.pending?`<b>${st.pending}</b> decision(s) recorded, not in the workbook yet`+(st.excel?" · close the tracker in Excel before saving":""):(st.excel?"Tracker is open in Excel":"Everything is saved");$("#save").disabled=!st.pending}
+function cover(on,t,p){$("#cover").classList.toggle("on",on);if(t)$("#covt").textContent=t;$("#covp").textContent=p||""}
+async function save(quit){const st=await api("/api/status");if(st.excel){msg("The tracker is open in Excel. Save and close it there (Cmd+S, Cmd+W), then press Save again.");return false}
+cover(true,quit?"Saving and closing...":"Saving to the workbook...",st.adds?`Adding ${st.adds} job(s) to To Apply: about ${Math.max(5,st.adds*6)} seconds.`:"A few seconds.");
+const r=await api(quit?"/api/quit":"/api/apply",{});cover(false);if(quit&&!r.pending){document.body.innerHTML=`<main><h2>Saved. You can close this tab.</h2><p>${esc(r.message||"")}</p></main>`;return true}msg(r.message);return true}
 function mark(text,words){let t=esc(text);for(const w of words){const re=new RegExp("(?<![\\w])("+w.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")(?![\\w])","gi");t=t.replace(re,"<mark>$1</mark>")}return t}
 async function load(){msg("");if(tab==="settings")return settings();data=await api(`/api/cards?show=${tab}&page=${page}`);if(data.error){msg(data.error);return}pend(data);render()}
 function render(){const L=$("#list");if(!data.cards.length){L.innerHTML=`<p class="help">${tab==="review"?"Nothing left to review. New jobs arrive with the next scan.":"Nothing here."}</p>`;$("#nav").innerHTML="";return}
 L.innerHTML=data.cards.map((c,i)=>{const multi=c.rows.length>1;const locs=c.rows.map((r,j)=>multi?`<label><input type="checkbox" data-k="${esc(r.key)}" ${j===0?"checked":""}> ${esc(r.location)} · Tier ${esc(r.tier??"?")}${r.pay&&r.pay!==c.pay?" · "+esc(r.pay):""} · <a href="${esc(r.link)}" target="_blank">open</a></label>`:`${esc(r.location)} · Tier ${esc(r.tier??"?")} · <a href="${esc(r.link)}" target="_blank">open posting</a>`).join("");
-const act=tab==="skipped"?`<button class="add" data-a="restore">Bring back</button>`:`<button class="add" data-a="add">Add<kbd>A</kbd></button><button class="skip" data-a="skip">Skip<kbd>S</kbd></button><button data-a="later">Later<kbd>L</kbd></button><span class="reasons">${reasons.map((r,j)=>`<button data-r="${esc(r)}">${j+1} ${esc(r)}</button>`).join("")}<button data-r="">no reason</button></span>`;
+const act=tab==="skipped"?`<button class="add" data-a="restore">Bring back</button>`:`<button class="add" data-a="add">Add<kbd>A</kbd></button><button class="skip" data-a="skip">Skip<kbd>S</kbd></button><button data-a="later">Later<kbd>L</kbd></button><span class="reasons">${reasons.map((r,j)=>`<button data-r="${esc(r)}">${j+1} ${esc(r)}</button>`).join("")}<button data-o="1">O other...</button><input placeholder="type a reason, Enter"><button data-r="">no reason</button></span>`;
 return `<div class="card" tabindex="0" data-i="${i}"><div class="top"><span class="co">${esc(c.company)}</span><span class="g ${esc(c.group)}">${esc(c.group)}</span>${c.role?`<span class="g">${esc(c.role)}</span>`:""}</div>
 <div class="ti">${esc(c.title)}</div><div class="facts"><span>Years <b>${c.years??"not stated"}</b></span><span>Fit <b>${c.fit??"?"}</b>/10</span><span>Pay <b>${esc(c.pay||"not listed")}</b></span><span>Posted <b>${c.posted?esc(c.posted)+" ("+c.ago+"d ago)":"?"}</b></span>${multi?`<span><b>${c.rows.length}</b> locations</span>`:""}</div>
 ${c.watch.length?`<div class="watch">${c.watch.map(w=>`<span class="w">${esc(w)}</span>`).join("")}</div>`:""}
 <div class="locs">${locs}</div>${c.requirements?`<div class="req">Requirements: ${esc(c.requirements)}</div>`:""}${c.filtered?`<div class="grey">Greyed: ${esc(c.filtered)}</div>`:""}${c.reason!=null&&tab==="skipped"?`<div class="grey">Skipped ${esc(c.when)}${c.reason?": "+esc(c.reason):""}</div>`:""}
 ${c.fit_notes?`<div class="notes">Fit: ${esc(c.fit_notes)}</div>`:""}<details><summary>Description</summary><div class="desc">${c.description?mark(c.description,c.watch):"Not saved. Use the link above."}</div></details>
 <div class="btns">${act}</div></div>`}).join("");
-const pages=Math.ceil(data.total/5);$("#nav").innerHTML=`<button class="act" id="prev" ${page?"":"disabled"}>Previous 5 (P)</button><span>${page*5+1}-${Math.min(data.total,page*5+5)} of ${data.total} jobs</span><button class="act" id="next" ${page+1<pages?"":"disabled"}>Next 5 (N)</button>`;
+const pages=Math.ceil(data.total/5);$("#nav").innerHTML=`<button class="act" id="prev" ${page?"":"disabled"}>Previous 5 (P)</button><span>${page*5+1}-${Math.min(data.total,page*5+5)} of ${data.total} ${tab==="review"?"left to review":"jobs"}</span><button class="act" id="next" ${page+1<pages?"":"disabled"}>Next 5 (N)</button>`;
 $("#prev").onclick=()=>{page--;load()};$("#next").onclick=()=>{page++;load()};
-document.querySelectorAll(".card").forEach(el=>{el.onclick=e=>{setFocus(+el.dataset.i,false);const b=e.target.closest("button");if(!b)return;if(b.dataset.a)act(+el.dataset.i,b.dataset.a);if(b.dataset.r!==undefined)skip(+el.dataset.i,b.dataset.r)}});setFocus(Math.min(focus,data.cards.length-1),false)}
+document.querySelectorAll(".card").forEach(el=>{el.onclick=e=>{setFocus(+el.dataset.i,false);const b=e.target.closest("button");if(!b)return;if(b.dataset.a)act(+el.dataset.i,b.dataset.a);if(b.dataset.o)other(+el.dataset.i);if(b.dataset.r!==undefined)skip(+el.dataset.i,b.dataset.r)};
+const inp=el.querySelector(".reasons input");if(inp)inp.onkeydown=e=>{e.stopPropagation();if(e.key==="Enter")skip(+el.dataset.i,inp.value.trim());if(e.key==="Escape"){el.querySelector(".reasons").classList.remove("other")}}});setFocus(Math.min(focus,data.cards.length-1),false)}
 function setFocus(i,scroll=true){focus=Math.max(0,i);document.querySelectorAll(".card").forEach(c=>c.classList.toggle("focus",+c.dataset.i===focus));const el=document.querySelector(`.card[data-i="${focus}"]`);if(el&&scroll)el.scrollIntoView({block:"nearest",behavior:"smooth"})}
 function keysOf(i,picked){const el=document.querySelector(`.card[data-i="${i}"]`),c=data.cards[i];if(picked&&c.rows.length>1)return[...el.querySelectorAll("input:checked")].map(x=>x.dataset.k);return c.rows.map(r=>r.key)}
 async function act(i,a){const el=document.querySelector(`.card[data-i="${i}"]`);if(!el||el.classList.contains("done"))return;
 if(a==="skip"){el.querySelector(".reasons").classList.add("on");el.dataset.asking="1";return}
 const all=keysOf(i,false);let st;if(a==="add"){const pick=keysOf(i,true);if(!pick.length){msg("Tick at least one location to add.");return}st=await api("/api/decide",{action:"add",keys:all,add:pick})}
 else st=await api("/api/decide",{action:a,keys:all});done(el,st)}
+function other(i){const el=document.querySelector(`.card[data-i="${i}"]`);const box=el.querySelector(".reasons");box.classList.add("other");box.querySelector("input").focus()}
 async function skip(i,r){const el=document.querySelector(`.card[data-i="${i}"]`);delete el.dataset.asking;const st=await api("/api/decide",{action:"skip",keys:keysOf(i,false),reason:r});done(el,st)}
 async function done(el,st){el.classList.add("done");pend(st);const left=[...document.querySelectorAll(".card")].filter(c=>!c.classList.contains("done"));
-if(left.length){setFocus(+left[0].dataset.i);return}if(tab!=="review"){page=0;return load()}
-msg("Saving these to the workbook...");const r=await api("/api/apply",{});msg(r.message);page=0;focus=0;data=await api(`/api/cards?show=${tab}&page=0`);pend(data);render()}
+if(left.length){setFocus(+left[0].dataset.i);return}focus=0;await load();window.scrollTo({top:0,behavior:"smooth"})}
 async function settings(){const s=await api("/api/settings");$("#nav").innerHTML="";$("#list").innerHTML=`<div class="card set">
 <label>Referral companies</label><textarea id="s_ref" rows="2">${esc(s.apply_referral||"")}</textarea>
 <label>Top companies</label><textarea id="s_top" rows="4">${esc(s.apply_top||"")}</textarea><div class="hint">Comma-separated. Moving a company between groups = cutting it from one box and pasting it in the other. Every other company is Other.</div>
 <label>Fit threshold</label><input id="s_fit" value="${esc(s.apply_fit_min??5)}"><div class="hint">Jobs whose Fit is below this go to the bottom of their group (never hidden).</div>
 <label>Watch-out words</label><textarea id="s_watch" rows="3">${esc(s.review_watch_outs||"")}</textarea><div class="hint">Highlighted on each job (never hidden).</div>
+<label>Skip reasons</label><textarea id="s_reasons" rows="2">${esc(s.review_skip_reasons||"")}</textarea><div class="hint">Offered when you skip (keys 1-9). "Other" always lets you type one.</div>
 <div class="btns"><button class="add" id="s_save">Save settings</button></div></div>`;
-$("#s_save").onclick=async()=>{const st=await api("/api/settings",{apply_referral:$("#s_ref").value,apply_top:$("#s_top").value,apply_fit_min:$("#s_fit").value,review_watch_outs:$("#s_watch").value});pend(st);const r=await api("/api/apply",{});msg(r.message||"Saved.")}}
+$("#s_save").onclick=async()=>{const st=await api("/api/settings",{apply_referral:$("#s_ref").value,apply_top:$("#s_top").value,apply_fit_min:$("#s_fit").value,review_watch_outs:$("#s_watch").value,review_skip_reasons:$("#s_reasons").value});pend(st);const s2=await api("/api/settings");reasons=s2.reasons||[];msg("Settings recorded; they go into the workbook with your next Save.")}}
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));tab=b.dataset.t;page=0;focus=0;load()});
-$("#save").onclick=async()=>{msg("Saving...");const r=await api("/api/apply",{});msg(r.message);load()};
+$("#save").onclick=async()=>{if(await save(false))load()};$("#quit").onclick=()=>save(true);
 document.addEventListener("keydown",e=>{if(!data||!data.cards||tab==="settings"||e.metaKey||e.ctrlKey||e.target.matches("input,textarea"))return;const k=e.key.toLowerCase();const el=document.querySelector(`.card[data-i="${focus}"]`);
-if(el&&el.dataset.asking){if(/^[1-5]$/.test(k)&&reasons[+k-1]){skip(focus,reasons[+k-1]);e.preventDefault()}else if(k==="enter"){skip(focus,"");e.preventDefault()}else if(k==="escape"){delete el.dataset.asking;el.querySelector(".reasons").classList.remove("on")}return}
+if(el&&el.dataset.asking){if(/^[1-9]$/.test(k)&&reasons[+k-1]){skip(focus,reasons[+k-1]);e.preventDefault()}else if(k==="o"){other(focus);e.preventDefault()}else if(k==="enter"){skip(focus,"");e.preventDefault()}else if(k==="escape"){delete el.dataset.asking;el.querySelector(".reasons").classList.remove("on")}return}
 if(k==="a")act(focus,"add");else if(k==="s")act(focus,"skip");else if(k==="l")act(focus,"later");else if(k==="j")setFocus(Math.min(focus+1,data.cards.length-1));else if(k==="k")setFocus(focus-1);
 else if(k==="e"&&el){const d=el.querySelector("details");d.open=!d.open}else if(k==="n"&&$("#next")&&!$("#next").disabled){page++;focus=0;load()}else if(k==="p"&&page){page--;focus=0;load()}});
 setInterval(async()=>{const st=await api("/api/status");if(data)pend(st)},15000);
@@ -473,6 +491,11 @@ def main():
         print("  Saving decisions left from last time...")
         print("  " + apply_now().get("message", ""))
     threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+
+    def stop(*_):
+        raise KeyboardInterrupt  # closing the Terminal window or Ctrl+C: save, then quit
+    for sig in (signal.SIGHUP, signal.SIGTERM):
+        signal.signal(sig, stop)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -480,11 +503,20 @@ def main():
     p = load_pending()
     if p["decisions"] or p["settings"]:
         if excel_open():
-            print(f"\n  {len(p['decisions'])} decision(s) are saved in app/review_pending.json and go into the workbook "
-                  f"the next time you open the Review screen with Excel closed.")
+            say(f"\n  {len(p['decisions'])} decision(s) are kept in app/review_pending.json; they go into the workbook "
+                f"the next time you open the Review screen with Excel closed.")
         else:
-            print("\n  Saving your last decisions to the workbook...")
-            print("  " + apply_now().get("message", ""))
+            say("\n  Saving your decisions to the workbook...")
+            say("  " + apply_now().get("message", ""))
+    say("  Review screen closed.")
+
+
+def say(text: str):
+    """Print, but never fail when the Terminal window is already gone."""
+    try:
+        print(text, flush=True)
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":
