@@ -20,3 +20,5 @@ Job_Tracker-*.xlsx
 Job_Tracker_*.xlsx
 Old_*.xlsx
 *.tmp
+app/auto_scan.json
+app/auto_scan.lock

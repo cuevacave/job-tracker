@@ -35,6 +35,7 @@ li { margin:.2em 0; }
 <li><a href="#usage">Usage</a><ul>
 <li><a href="#add-job">Add Job</a></li>
 <li><a href="#check-jobs-the-job-watcher">Check Jobs (the job watcher)</a></li>
+<li><a href="#automatic-daily-scan">Automatic daily scan</a></li>
 <li><a href="#check-email">Check Email</a></li>
 <li><a href="#rescore-jobs">Rescore Jobs</a></li>
 </ul>
@@ -306,6 +307,16 @@ li { margin:.2em 0; }
 <li><strong>Senior filter:</strong> <strong>Watch: senior-level title words</strong> and <strong>Watch: level words</strong> are plain lists you can edit. At consulting firms, add <code>Associate</code> if it's a senior title there.</li>
 <li><strong>Titles that contain a skip word:</strong> a skip or senior word doesn't count when it's part of a title keyword you listed. With the keyword <code>associate product manager</code>, "Associate Product Manager" gets through even though <code>Manager</code> is a skip word; "Senior Associate Product Manager" is still skipped.</li>
 </ul>
+<h3 id="automatic-daily-scan">Automatic daily scan</h3>
+<p>Let your Mac scan for you every morning. Open <strong>Auto Scan</strong> (first time: in Terminal, type <code>bash</code>, drag <strong>Auto Scan.command</strong> in, press Enter) and choose:</p>
+<ul>
+<li><strong>1 = turn on.</strong> Every active Watchlist company is scanned once a day from 6:30 am. If Excel has the tracker open, or there's no internet yet, it tries again every hour until 9:30 pm. If the Mac was asleep at 6:30, it runs when the Mac wakes. A notification tells you what it found ("7 new matches, 3 in Tier 1-2"); the jobs are on New Matches as usual.</li>
+<li><strong>3 = run now.</strong> Start a scan in the background, e.g. to test it. If macOS asks whether Python may access your Desktop or Documents folder, click <strong>Allow</strong> (otherwise the scheduled scan can't open your tracker; see Troubleshooting).</li>
+<li><strong>4 = show the log</strong> of the last scan (also in <code>app/debug/auto_scan.log</code>).</li>
+<li><strong>5 = wake the Mac at 6:25 am</strong> (asks for your Mac password; works when it's plugged in with the lid open). Undo with <code>sudo pmset repeat cancel</code>.</li>
+<li><strong>2 = turn off.</strong> Removes the schedule completely.</li>
+</ul>
+<p>The automatic scan only finds and greys jobs. Adding them (a), recheck (r) and deep scans (d) stay in Check Jobs.</p>
 <h3 id="check-email">Check Email</h3>
 <p>Double-click <strong>Check Email</strong>. It reads recent emails from the accounts you added in Setup and:</p>
 <ul>
@@ -749,10 +760,18 @@ li { margin:.2em 0; }
 <td>Check Email can't log in</td>
 <td>Use an <strong>app password</strong> (not your normal password), and make sure IMAP is on in Gmail settings.</td>
 </tr>
+<tr>
+<td>Automatic scan: "can't open your Job Tracker folder"</td>
+<td>macOS blocked the background scan from your Desktop/Documents folder. System Settings → Privacy &amp; Security → <strong>Files and Folders</strong> (or <strong>Full Disk Access</strong>) → allow <strong>python3</strong>, then Auto Scan → 3 to test. Or keep the Job Tracker folder somewhere outside Desktop/Documents/Downloads.</td>
+</tr>
+<tr>
+<td>Automatic scan didn't run</td>
+<td>Auto Scan → 4 shows the log. The Mac must be on (or asleep and able to wake), the tracker closed in Excel, and the internet connected.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="uninstall">Uninstall</h2>
-<p>Delete the Job Tracker folder. If you installed Ollama and don't need it for anything else, drag it from Applications to the Trash and delete the <code>.ollama</code> folder in your home folder (press Cmd+Shift+. in Finder to show hidden folders). Gmail app passwords can be removed at <a href="https://myaccount.google.com/apppasswords">myaccount.google.com/apppasswords</a>.</p>
+<p>If you turned on the automatic scan, open Auto Scan and choose <strong>2</strong> first. Then delete the Job Tracker folder. If you installed Ollama and don't need it for anything else, drag it from Applications to the Trash and delete the <code>.ollama</code> folder in your home folder (press Cmd+Shift+. in Finder to show hidden folders). Gmail app passwords can be removed at <a href="https://myaccount.google.com/apppasswords">myaccount.google.com/apppasswords</a>.</p>
 <h2 id="contributing">Contributing</h2>
 <p>Questions, bugs and ideas are welcome. Please use <strong>Issues</strong> on this GitHub page. When reporting a problem, include:</p>
 <ul>
