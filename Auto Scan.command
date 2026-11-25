@@ -69,6 +69,11 @@ case "$c" in
   fi
   ;;
 4)
+  if [ -f "$DIR/app/auto_scan.lock" ]; then
+    echo "  A scan is running right now (started $(date -r "$DIR/app/auto_scan.lock" '+%-I:%M %p')). Its results are"
+    echo "  added below when it finishes. Below is the log so far:"
+    echo
+  fi
   if [ -f "$DIR/app/debug/auto_scan.log" ]; then tail -n 40 "$DIR/app/debug/auto_scan.log"; else echo "  No scan has run yet."; fi
   if [ -f "$HOME/Library/Logs/JobTracker-autoscan.log" ]; then echo; echo "  Problems reported:"; tail -n 10 "$HOME/Library/Logs/JobTracker-autoscan.log"; fi
   ;;
