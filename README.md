@@ -164,6 +164,7 @@ All the lists are on Settings under **JOB WATCHER** (filter years, degree fields
 - **A company's first scan:** for a small company (60 postings or fewer), every matching job that's still open; for a big company, the last 14 days.
 - **Later scans:** the days since that company's last scan, plus 2, between 3 and 14.
 - **No repeats:** a job is never listed twice, and never if it's already in your tracker.
+- **A company that fails for a moment** (timeout, dropped connection) is tried once more at the end of the same scan. If it still fails, nothing is lost: its next scan looks back to its last successful one.
 - **Warnings:** Check Jobs warns you when a priority group hasn't been scanned in 10 days.
 - **Settings:** all of these numbers are under **JOB WATCHER**.
 

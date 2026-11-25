@@ -1475,6 +1475,7 @@ def save_state(st):
 
 # ------------------------------------------------------------------ run
 MIN_WINDOW = 3  # daily scans overlap by at least a couple of days; the weekly keyword pass looks back the full window
+RETRY_PAUSE = 45  # seconds to wait before trying failed companies once more
 KEYWORD_PASS_DAYS = 7  # Workday/Apple/Google: keyword searches on top of the newest-first read, once a week
 HTML_SYSTEMS = {"Apple", "Google", "SuccessFactors", "Phenom", "iCIMS", "Paylocity", "Oracle", "BambooHR", "Rippling",
                 "JazzHR", "ApplicantStack", "Daedalus",
@@ -1774,7 +1775,14 @@ def run(tr, interactive=True, priorities=None, area=None, deep=None):
             print("  Your Watchlist tab has no active companies yet. Add a company and its careers link there.")
         elif not active:
             print(f"  No active companies with priority {', '.join(map(str, sorted(priorities or [])))}.")
-    for w in active:
+    # a company that fails for a moment (timeout, dropped connection) is tried once more at the end of the run
+    queue, later, retried = list(active), [], set()
+    while queue or later:
+        if not queue:
+            print(f"\n  Trying {len(later)} compan{'ies' if len(later) != 1 else 'y'} again after a short pause...")
+            time.sleep(RETRY_PAUSE)
+            queue, later = later, []
+        w = queue.pop(0)
         if not re.match(r"https?://", w["url"], re.I):
             w["url"] = "https://" + w["url"].lstrip("/")  # e.g. jobs.arup.com/... typed without https://
         name = w.get("company") or w["url"]
@@ -1831,6 +1839,13 @@ def run(tr, interactive=True, priorities=None, area=None, deep=None):
                                f"app/debug/{DEBUG_TAG}.html")
             else:
                 w["result"] = f"Error reading the job feed ({type(e).__name__}); try again later"
+            transient = isinstance(e, (Timeout, NetError, requests.exceptions.ChunkedEncodingError,
+                                       requests.exceptions.ReadTimeout))
+            if transient and not deep and id(w) not in retried:
+                retried.add(id(w))
+                later.append(w)
+                print(f"  {name} ({sysname}): {w['result'].split(';')[0]} - will try again at the end")
+                continue
             print(f"  {name} ({sysname}): {w['result']}")
             continue
         w["where"] = where_summary(posts, geo_cfg) or w.get("where")
