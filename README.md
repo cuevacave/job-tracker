@@ -18,10 +18,12 @@ It's built for people who apply to a lot of jobs and are tired of copying titles
 - [Usage](#usage)
   - [Add Job](#add-job)
   - [Check Jobs (the job watcher)](#check-jobs-the-job-watcher)
+  - [Review Jobs (the review screen)](#review-jobs-the-review-screen)
   - [Automatic daily scan](#automatic-daily-scan)
   - [Check Email](#check-email)
   - [Rescore Jobs](#rescore-jobs)
 - [The spreadsheet](#the-spreadsheet)
+- [The apply order](#the-apply-order)
 - [Using a resume builder](#using-a-resume-builder)
 - [How the Priority score works](#how-the-priority-score-works)
 - [Adding a company](#adding-a-company)
@@ -201,6 +203,18 @@ All the lists are on Settings under **JOB WATCHER** (filter years, degree fields
 - **Senior filter:** **Watch: senior-level title words** and **Watch: level words** are plain lists you can edit. At consulting firms, add `Associate` if it's a senior title there.
 - **Titles that contain a skip word:** a skip or senior word doesn't count when it's part of a title keyword you listed. With the keyword `associate product manager`, "Associate Product Manager" gets through even though `Manager` is a skip word; "Senior Associate Product Manager" is still skipped.
 
+### Review Jobs (the review screen)
+
+Double-click **Review Jobs** (first time: in Terminal, type `bash `, drag **Review Jobs.command** in, press Enter). A page opens in your browser; it's served from your Mac only, nothing goes online. Keep the Terminal window open while you review.
+
+- **To review** shows your undecided New Matches, 5 at a time, in the [apply order](#the-apply-order). Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click **Description** or press **E**). The link is there too.
+- **Watch-out words** (Settings) are highlighted on the job and in its description, e.g. thermal or CFD. They never hide a job.
+- **The same job in several places** is one card listing each location; tick the ones you want and press Add (the others count as skipped).
+- **Add (A)** adds the job exactly like Check Jobs > a. **Skip (S)** dismisses it; press 1-5 for a reason or Enter for none. **Later (L)** moves it to the end for now.
+- When you've decided on all 5, they're saved to the workbook and the next 5 load. If the tracker is open in Excel, your decisions wait (the top bar says so) and are saved as soon as Excel is closed and you press **Save to workbook**, or the next time you open the screen.
+- **Greyed** shows the jobs the scan filtered; **Skipped** shows what you skipped, with a **Bring back** button; **Settings** edits your company groups, fit threshold and watch-out words.
+- **Every decision is kept** in `app/decisions.csv` (date, decision, reason and the job's details), so you can look back at what you add versus skip.
+
 ### Automatic daily scan
 
 Let your Mac scan for you every morning. Open **Auto Scan** (first time: in Terminal, type `bash `, drag **Auto Scan.command** in, press Enter) and choose:
@@ -246,11 +260,20 @@ After changing your keywords, background, pay target or AI model, double-click *
 - **Backups:** the last 15 versions of the tracker and the last 10 versions of the program files are kept in `app/backups`; older ones are deleted.
 - **Company names** are tidied when a job is added: `1000 KLA Corporation` → `KLA`, and a job on a company's own job board gets your Watchlist name for it.
 
+## The apply order
+
+One rule decides what to look at and apply to first. It's used by the Review screen, New Matches, To Apply and jobs.csv.
+
+- **Groups** (Settings, or the Review screen's Settings tab): **Apply: referral companies** and **Apply: top companies**, comma-separated. Every other company is Other. Names match like Co. Priority does, so a job filed under a company's legal name still counts.
+- **Order:** jobs in Tier 1-2 first (Referral, then Top, then Other), then every other job in the same group order.
+- **Within a group:** jobs whose **Fit** is below **Apply: fit threshold** (default 5) go last; then jobs asking 0-2 years, then "not stated", then more; then highest Fit; then newest posting.
+- **Fit** is the same 0-10 score on New Matches and To Apply, from your Fit keywords and the years the job asks (the AI can refine it on To Apply with Rescore Jobs).
+
 ## Using a resume builder
 
 The tracker and a separate resume tool can work together through two plain files, without ever editing the same file:
 
-- **`jobs.csv`** (next to the workbook, rewritten on every run): every live job with its ID, company, title, Track, Role Type, location, tier, pay, status, link, the full description, and a **Requirements** summary such as `Years: 3+; Degree: BS Mechanical/Aerospace (or related); Skills: GD&T, Creo; Citizenship: US`. Read it by column name.
+- **`jobs.csv`** (next to the workbook, rewritten on every run): every live job with its ID, company, title, Track, Role Type, location, tier, pay, status, link, the full description, its place in [the apply order](#the-apply-order) (**Apply Group**: Referral / Top / Other, and **Apply Rank**: 1 = apply first, blank once applied), and a **Requirements** summary such as `Years: 3+; Degree: BS Mechanical/Aerospace (or related); Skills: GD&T, Creo; Citizenship: US`. Read it by column name.
 - **`resume_log.csv`** in a folder named **Resume Builder** next to your Job Tracker folder, written only by the resume tool. Columns: `Job ID, Resume Version, Base, File, Created, Submitted, Accomplishments`. On each run the tracker fills **Resume Version** on the matching job, and moves the job to **Applied** only when **Submitted** has a date (a resume being made is not an application). If a Job ID appears more than once, the newest row wins. The tracker never writes this file, and skips it if it isn't there.
 
 ## How the Priority score works

@@ -2004,7 +2004,9 @@ def add_marked(tr, ai=None):
         def __getattr__(self, name):
             return lambda *a, **k: None
 
+    global _RULES
     register_eightfold_domains(sheets.read_watchlist(tr.wb))
+    _RULES = tr.apply_rules()
     rows = sheets.read_new_matches(tr.wb)
     todo = [r for r in rows if str(r.get("action") or "").strip().lower() == "add" and r.get("link")]
     if not todo:
@@ -2118,11 +2120,26 @@ def _log_unread(rows):
         pass
 
 
+_RULES = None  # the shared apply order (apply.py), set by fill_columns / add_marked
+
+
+def fit_of(title, desc, s):
+    """The rules-based Fit (0-10) for a posting, as To Apply computes it without the AI."""
+    import scoring
+    try:
+        return scoring.fit({"title": title, "description": desc}, s, None)[0]
+    except Exception:
+        return None
+
+
 def nm_order(r):
     """New Matches order: rows to decide (and ones marked Add) on top, greyed-out ones below, then rows already
-    added or dismissed at the bottom. Within each group: most recently posted first."""
+    added or dismissed at the bottom. Within each group: the shared apply order (referral and top companies in
+    Tier 1-2 first...; see apply.py), or newest posting first if that isn't set up."""
     a = str(r.get("action") or "").strip().lower()
     group = 2 if a in ("added", "dismiss", "dismissed") else (0 if a == "add" or not r.get("filtered") else 1)
+    if _RULES is not None:
+        return (group,) + _RULES.row_key(r)
     p, f = to_date(r.get("posted")), to_date(r.get("found"))
     # newest posting first; ones without a posted date go after the dated ones, newest found first
     return (group, 0 if p else 1, -(p.toordinal() if p else 0), -(f.toordinal() if f else 0))
@@ -2185,8 +2202,12 @@ def _max_tier(w):
 
 
 def fill_columns(tr, rows, force=False):
-    """Track, Role Type, Location Tier, Years and Co. Priority for New Matches rows (empty ones, or all with force)."""
+    """Track, Role Type, Location Tier, Years, Fit, Apply Group and Co. Priority for New Matches rows (empty ones, or
+    all with force)."""
+    global _RULES
     s = tr.s
+    rules = _RULES = tr.apply_rules()
+    cache = _load_desc_cache()
     for r in rows:
         t = r.get("title")
         if not t:
@@ -2202,6 +2223,12 @@ def fill_columns(tr, rows, force=False):
         # Years: the number in Requirements ("asks 2+ yrs (BS: 4+)" -> 2, for your degree), blank when not stated
         m = re.match(r"\s*asks (\d+)\+ yrs", str(r.get("requirements") or ""))
         r["years"] = int(m.group(1)) if m else None
+        # Fit (0-10, the same rules-based score To Apply uses, from the saved description) and the apply group
+        if force or r.get("fit") in (None, ""):
+            desc = (cache.get(r.get("link")) or {}).get("t") if isinstance(r.get("link"), str) else None
+            if desc:
+                r["fit"] = fit_of(t, desc, s)
+        r["apply_group"] = rules.group(r.get("company"), r.get("link"))
 
 
 def recheck_matches(tr):

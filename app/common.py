@@ -253,6 +253,18 @@ SETTINGS = [
     ("role_design", "Role type: Design / R&D", "design, R&D, research, development, mechanical, product engineer, hardware, propulsion, thermal, structural, analyst, optical, optics, opto, sustaining",
      "Titles with one of these words get Role Type = Design / R&D. Role types are checked top to bottom; the first that "
      "matches wins (anything else = Other).", True, None),
+    ("apply_referral", "Apply: referral companies", "",
+     "Companies where you have a referral, comma-separated (e.g. Medtronic, Qualcomm). Their jobs come first in the "
+     "apply order (Review screen, New Matches, To Apply, jobs.csv). Names match the way Co. Priority does.", True, None),
+    ("apply_top", "Apply: top companies", "",
+     "Companies you'd most like to work for, comma-separated. They come right after referral companies.", True, None),
+    ("apply_fit_min", "Apply: fit threshold", 5,
+     "Jobs whose Fit is below this go to the bottom of their group in the apply order (never hidden).", True, None),
+    ("review_watch_outs", "Review: watch-out words",
+     "systems engineering, MBSE, thermal, heat transfer, CFD, fluid dynamics, control theory, controls engineering, "
+     "linear algebra, differential equations, Kalman",
+     "Highlighted (never hidden) on the Review screen when a posting mentions them: things you may want to read closely.",
+     True, None),
     ("watch_skill_dealbreakers", "Watch: required-skill dealbreakers", "",
      "Phrases that filter a posting when they appear in a REQUIRED line, e.g. production code, React. Blank = off.",
      True, None),
@@ -553,6 +565,24 @@ class Tracker:
         n = re.sub(r"\s{2,}", " ", n).strip(" ,|-")
         return n or company
 
+    def ensure_settings_rows(self):
+        """A tracker made by an older version lacks newer Settings rows: add them (keeping every value you set)."""
+        import sheets
+        if "Settings" not in self.wb.sheetnames:
+            return
+        have = {str(r[0].value or "").strip() for r in self.wb["Settings"].iter_rows(min_row=1, max_col=1)}
+        if any(lab not in have for k, lab, *_ in SETTINGS if k != H):
+            sheets.build_settings(self.wb, old_values=dict(self.s), index=self.wb.sheetnames.index("Settings"))
+
+    def apply_rules(self):
+        """The shared apply order (see apply.py), built once per run."""
+        if not hasattr(self, "_apply"):
+            import apply
+            import sheets
+            self._apply = apply.ApplyRules(self.s, sheets.read_watchlist(self.wb)
+                                           if "Watchlist" in self.wb.sheetnames else [])
+        return self._apply
+
     def company_priority(self, company, link=None):
         """Your Watchlist priority (1-6) for a job: by its link's careers site first (Workday lists Medtronic jobs
         under 'COV Covidien LP'), then by name ('KLA' in '1000 KLA Corporation', 'Smith & Nephew' = 'Smith+Nephew')."""
@@ -665,6 +695,7 @@ class Tracker:
     def save(self):
         import scoring
         import sheets
+        self.ensure_settings_rows()
         self.import_resume_log()
         for j in self.jobs:
             normalize(j, self)
@@ -685,7 +716,7 @@ class Tracker:
         for j in self.jobs:
             tabs[tab_for(j)].append(j)
         s = self.s
-        tabs["To Apply"].sort(key=lambda j: scoring.to_apply_sort_key(j, s))
+        tabs["To Apply"].sort(key=self.apply_rules().job_key)  # the shared apply order (apply.py)
         tabs["Applied"].sort(key=lambda j: (0 if j.get("next_action") else 1, -status_rank(j.get("status")),
                                             -_ord(j.get("last_update") or j.get("date_applied"))))
         tabs["Closed"].sort(key=lambda j: -_ord(j.get("last_update") or j.get("date_added")))
@@ -702,7 +733,7 @@ class Tracker:
     CSV_KEYS = ["id", "priority", "company", "title", "track", "role_type", "posted", "deadline", "location", "area",
                 "loc_tier", "co_priority", "years_req", "work_mode", "pay_min", "pay_max", "pay_unit", "status",
                 "applied", "date_applied", "resume", "next_action", "link", "requirements", "fit_score", "fit_notes", "notes",
-                "date_added", "emp_type", "description"]
+                "date_added", "emp_type", "description", "apply_group", "apply_rank"]
 
     def archive_old(self):
         """Expired / Skipped jobs untouched for 60+ days leave the workbook for app/archive.csv; their links are
@@ -740,13 +771,19 @@ class Tracker:
         import csv
         import scoring
         rows = [j for j in self.jobs if j.get("status") not in CLOSED]
-        rows.sort(key=lambda j: -(scoring.priority(j, self.s) or 0))
+        rules = self.apply_rules()
+        # jobs to apply to first, in the shared apply order (Apply Rank 1 = do first); applied ones after them
+        todo = sorted([j for j in rows if j.get("applied") != "Yes"], key=rules.job_key)
+        done = sorted([j for j in rows if j.get("applied") == "Yes"], key=lambda j: -(scoring.priority(j, self.s) or 0))
+        rank = {id(j): i for i, j in enumerate(todo, 1)}
+        rows = todo + done
         tmp = ROOT / "jobs.csv.tmp"
         try:
             with open(tmp, "w", newline="", encoding="utf-8-sig") as f:
                 w = csv.writer(f)
-                w.writerow(["Priority Score" if k == "priority" else "Requirements" if k == "requirements" else HEADER.get(k, k)
-                            for k in self.CSV_KEYS])
+                names = {"priority": "Priority Score", "requirements": "Requirements", "apply_group": "Apply Group",
+                         "apply_rank": "Apply Rank"}
+                w.writerow([names.get(k) or HEADER.get(k, k) for k in self.CSV_KEYS])
                 for j in rows:
                     vals = []
                     for k in self.CSV_KEYS:
@@ -754,6 +791,10 @@ class Tracker:
                             v = round(scoring.priority(j, self.s) or 0, 1)
                         elif k == "requirements":
                             v = _req_summary(j, self.s)
+                        elif k == "apply_group":
+                            v = rules.group(j.get("company"), j.get("link"))
+                        elif k == "apply_rank":
+                            v = rank.get(id(j))
                         else:
                             v = j.get(k)
                         vals.append(v.isoformat() if isinstance(v, (dt.date, dt.datetime)) else ("" if v is None else v))

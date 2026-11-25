@@ -35,12 +35,14 @@ li { margin:.2em 0; }
 <li><a href="#usage">Usage</a><ul>
 <li><a href="#add-job">Add Job</a></li>
 <li><a href="#check-jobs-the-job-watcher">Check Jobs (the job watcher)</a></li>
+<li><a href="#review-jobs-the-review-screen">Review Jobs (the review screen)</a></li>
 <li><a href="#automatic-daily-scan">Automatic daily scan</a></li>
 <li><a href="#check-email">Check Email</a></li>
 <li><a href="#rescore-jobs">Rescore Jobs</a></li>
 </ul>
 </li>
 <li><a href="#the-spreadsheet">The spreadsheet</a></li>
+<li><a href="#the-apply-order">The apply order</a></li>
 <li><a href="#using-a-resume-builder">Using a resume builder</a></li>
 <li><a href="#how-the-priority-score-works">How the Priority score works</a></li>
 <li><a href="#adding-a-company">Adding a company</a></li>
@@ -308,6 +310,17 @@ li { margin:.2em 0; }
 <li><strong>Senior filter:</strong> <strong>Watch: senior-level title words</strong> and <strong>Watch: level words</strong> are plain lists you can edit. At consulting firms, add <code>Associate</code> if it's a senior title there.</li>
 <li><strong>Titles that contain a skip word:</strong> a skip or senior word doesn't count when it's part of a title keyword you listed. With the keyword <code>associate product manager</code>, "Associate Product Manager" gets through even though <code>Manager</code> is a skip word; "Senior Associate Product Manager" is still skipped.</li>
 </ul>
+<h3 id="review-jobs-the-review-screen">Review Jobs (the review screen)</h3>
+<p>Double-click <strong>Review Jobs</strong> (first time: in Terminal, type <code>bash</code>, drag <strong>Review Jobs.command</strong> in, press Enter). A page opens in your browser; it's served from your Mac only, nothing goes online. Keep the Terminal window open while you review.</p>
+<ul>
+<li><strong>To review</strong> shows your undecided New Matches, 5 at a time, in the <a href="#the-apply-order">apply order</a>. Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click <strong>Description</strong> or press <strong>E</strong>). The link is there too.</li>
+<li><strong>Watch-out words</strong> (Settings) are highlighted on the job and in its description, e.g. thermal or CFD. They never hide a job.</li>
+<li><strong>The same job in several places</strong> is one card listing each location; tick the ones you want and press Add (the others count as skipped).</li>
+<li><strong>Add (A)</strong> adds the job exactly like Check Jobs &gt; a. <strong>Skip (S)</strong> dismisses it; press 1-5 for a reason or Enter for none. <strong>Later (L)</strong> moves it to the end for now.</li>
+<li>When you've decided on all 5, they're saved to the workbook and the next 5 load. If the tracker is open in Excel, your decisions wait (the top bar says so) and are saved as soon as Excel is closed and you press <strong>Save to workbook</strong>, or the next time you open the screen.</li>
+<li><strong>Greyed</strong> shows the jobs the scan filtered; <strong>Skipped</strong> shows what you skipped, with a <strong>Bring back</strong> button; <strong>Settings</strong> edits your company groups, fit threshold and watch-out words.</li>
+<li><strong>Every decision is kept</strong> in <code>app/decisions.csv</code> (date, decision, reason and the job's details), so you can look back at what you add versus skip.</li>
+</ul>
 <h3 id="automatic-daily-scan">Automatic daily scan</h3>
 <p>Let your Mac scan for you every morning. Open <strong>Auto Scan</strong> (first time: in Terminal, type <code>bash</code>, drag <strong>Auto Scan.command</strong> in, press Enter) and choose:</p>
 <ul>
@@ -376,10 +389,18 @@ li { margin:.2em 0; }
 <li><strong>Backups:</strong> the last 15 versions of the tracker and the last 10 versions of the program files are kept in <code>app/backups</code>; older ones are deleted.</li>
 <li><strong>Company names</strong> are tidied when a job is added: <code>1000 KLA Corporation</code> → <code>KLA</code>, and a job on a company's own job board gets your Watchlist name for it.</li>
 </ul>
+<h2 id="the-apply-order">The apply order</h2>
+<p>One rule decides what to look at and apply to first. It's used by the Review screen, New Matches, To Apply and jobs.csv.</p>
+<ul>
+<li><strong>Groups</strong> (Settings, or the Review screen's Settings tab): <strong>Apply: referral companies</strong> and <strong>Apply: top companies</strong>, comma-separated. Every other company is Other. Names match like Co. Priority does, so a job filed under a company's legal name still counts.</li>
+<li><strong>Order:</strong> jobs in Tier 1-2 first (Referral, then Top, then Other), then every other job in the same group order.</li>
+<li><strong>Within a group:</strong> jobs whose <strong>Fit</strong> is below <strong>Apply: fit threshold</strong> (default 5) go last; then jobs asking 0-2 years, then "not stated", then more; then highest Fit; then newest posting.</li>
+<li><strong>Fit</strong> is the same 0-10 score on New Matches and To Apply, from your Fit keywords and the years the job asks (the AI can refine it on To Apply with Rescore Jobs).</li>
+</ul>
 <h2 id="using-a-resume-builder">Using a resume builder</h2>
 <p>The tracker and a separate resume tool can work together through two plain files, without ever editing the same file:</p>
 <ul>
-<li><strong><code>jobs.csv</code></strong> (next to the workbook, rewritten on every run): every live job with its ID, company, title, Track, Role Type, location, tier, pay, status, link, the full description, and a <strong>Requirements</strong> summary such as <code>Years: 3+; Degree: BS Mechanical/Aerospace (or related); Skills: GD&amp;T, Creo; Citizenship: US</code>. Read it by column name.</li>
+<li><strong><code>jobs.csv</code></strong> (next to the workbook, rewritten on every run): every live job with its ID, company, title, Track, Role Type, location, tier, pay, status, link, the full description, its place in <a href="#the-apply-order">the apply order</a> (<strong>Apply Group</strong>: Referral / Top / Other, and <strong>Apply Rank</strong>: 1 = apply first, blank once applied), and a <strong>Requirements</strong> summary such as <code>Years: 3+; Degree: BS Mechanical/Aerospace (or related); Skills: GD&amp;T, Creo; Citizenship: US</code>. Read it by column name.</li>
 <li><strong><code>resume_log.csv</code></strong> in a folder named <strong>Resume Builder</strong> next to your Job Tracker folder, written only by the resume tool. Columns: <code>Job ID, Resume Version, Base, File, Created, Submitted, Accomplishments</code>. On each run the tracker fills <strong>Resume Version</strong> on the matching job, and moves the job to <strong>Applied</strong> only when <strong>Submitted</strong> has a date (a resume being made is not an application). If a Job ID appears more than once, the newest row wins. The tracker never writes this file, and skips it if it isn't there.</li>
 </ul>
 <h2 id="how-the-priority-score-works">How the Priority score works</h2>

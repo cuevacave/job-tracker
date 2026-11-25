@@ -321,9 +321,9 @@ WL_HEAD = ["Company", "Careers link", "Extra title keywords", "Active", "Priorit
 WL_KEYS = ["company", "url", "keywords", "active", "priority", "max_tier", "notes", "where", "system", "checked", "result",
            "feed"]
 WL_INPUTS = 7  # yellow columns you fill in
-NM_HEAD = ["Found", "Company", "Title", "Track", "Role Type", "Location", "Area", "Tier", "Years", "Co. Priority", "Posted", "Days Ago", "Quick Fit", "Pay", "Requirements",
+NM_HEAD = ["Found", "Company", "Title", "Track", "Role Type", "Location", "Area", "Tier", "Years", "Fit", "Apply Group", "Co. Priority", "Posted", "Days Ago", "Quick Fit", "Pay", "Requirements",
            "Filtered", "Link", "Same Job, Other Links", "Action", "Source", "Key"]
-NM_KEYS = ["found", "company", "title", "track", "role_type", "location", "area", "loc_tier", "years", "co_priority", "posted", "ago", "quick", "pay", "requirements",
+NM_KEYS = ["found", "company", "title", "track", "role_type", "location", "area", "loc_tier", "years", "fit", "apply_group", "co_priority", "posted", "ago", "quick", "pay", "requirements",
            "filtered", "link", "copies", "action", "source", "key"]
 
 
@@ -424,7 +424,7 @@ def write_new_matches(wb, rows, n_new=0):
         wb.remove(wb["New Matches"])
     ws = wb.create_sheet("New Matches", idx)
     ws.sheet_properties.tabColor = "F79009"
-    _hdr(ws, NM_HEAD, [10, 18, 44, 14, 18, 26, 24, 6, 7, 8, 10, 8, 9, 18, 30, 34, 40, 30, 10, 13, 6])
+    _hdr(ws, NM_HEAD, [10, 18, 44, 14, 18, 26, 24, 6, 7, 6, 11, 8, 10, 8, 9, 18, 30, 34, 40, 30, 10, 13, 6])
     col = {k: i + 1 for i, k in enumerate(NM_KEYS)}
     L = {k: gcl(i) for k, i in col.items()}
     ws.freeze_panes = "D2"

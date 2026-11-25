@@ -186,7 +186,9 @@ def main():
     log("Scan started" + (" (run now)" if now else "") + ".")
     buf = LiveLog(LOG)
     try:
-        builtins.input = lambda *a, **k: ""  # never wait for an answer nobody is there to give
+        def no_questions(*a, **k):
+            raise EOFError  # never wait for an answer nobody is there to give
+        builtins.input = no_questions
         sys.path.insert(0, str(APP))
         with redirect_stdout(buf), redirect_stderr(buf):
             import common
