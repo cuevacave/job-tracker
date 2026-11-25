@@ -265,6 +265,16 @@ SETTINGS = [
      "linear algebra, differential equations, Kalman",
      "Highlighted (never hidden) on the Review screen when a posting mentions them: things you may want to read closely.",
      True, None),
+    ("watch_local_only", "Watch: local-candidates-only wording",
+     "only considering candidates local, candidates local to the position, local candidates only, "
+     "must live within commuting distance, must reside within, must currently reside, must live within",
+     "A posting that says one of these (it only hires people who already live nearby) is greyed as 'local candidates "
+     "only', unless the job is in your Home area. Blank = off.", True, None),
+    ("review_no_relo", "Review: no-relocation wording",
+     "no relocation, unable to provide relocation, relocation is not available, relocation is not provided, "
+     "not eligible for relocation, relocation assistance is not",
+     "Tagged 'no relocation help' on the Review screen (never greyed): you can apply, but you'd pay for the move.",
+     True, None),
     ("review_skip_reasons", "Review: skip reasons",
      "systems, thermal, math/controls, CFD, wrong field (CS/EE/wireless), link broken / closed, not interested",
      "The reasons offered when you skip a job on the Review screen (keys 1-9), comma-separated. 'Other' lets you type "

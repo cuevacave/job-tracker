@@ -1659,6 +1659,18 @@ def fetch_descriptions(cands: list) -> dict:
     return out
 
 
+def local_only(desc: str, s) -> str | None:
+    """The sentence saying the job only hires people who already live nearby (Settings > Watch: local-candidates-only
+    wording), or None."""
+    for w in split_list(s.get("watch_local_only")):
+        m = re.search(re.escape(w), desc or "", re.I)
+        if m:
+            a = max(desc.rfind(".", 0, m.start()), desc.rfind("\n", 0, m.start())) + 1
+            b = min([x for x in (desc.find(".", m.end()), desc.find("\n", m.end())) if x != -1] or [len(desc)])
+            return re.sub(r"\s+", " ", desc[a:b]).strip()
+    return None
+
+
 def check_requirements(cands: list, s) -> None:
     """Fills each candidate's row with Pay, Requirements and (if it fails a check) Filtered."""
     import reqcheck
@@ -1672,6 +1684,9 @@ def check_requirements(cands: list, s) -> None:
             continue
         r = reqcheck.check(desc, s)
         row["requirements"], row["filtered"], c["kind"], c["evidence"] = r["requirements"], r["filtered"], r["kind"], r["evidence"]
+        local = local_only(desc, s)
+        if local and not row["filtered"] and not str(row.get("area") or "").startswith("Home"):
+            row["filtered"], c["kind"], c["evidence"] = f"local candidates only “{local[:90]}”", "local", local
         lo, hi, unit = parse_pay(desc)
         if lo:
             row["pay"] = fmt_pay(lo, hi, unit)

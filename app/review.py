@@ -202,6 +202,8 @@ def card_json(g: list, s: dict) -> dict:
         "posted": posted.isoformat() if isinstance(posted, dt.date) else None, "ago": _days_ago(posted),
         "track": first.get("track"), "role": first.get("role_type"),
         "watch": _watch_hits(f"{first.get('title')}\n{desc}", words),
+        "flags": (["no relocation help"] if _watch_hits(desc, [w.strip() for w in str(s.get("review_no_relo") or "")
+                                                              .split(",") if w.strip()]) else []),
         "description": desc, "reason": first.get("_reason"), "when": first.get("_when"),
         "rows": [{"key": r.get("key"), "location": r.get("location"), "area": r.get("area"), "tier": r.get("loc_tier"),
                   "link": r.get("link"), "pay": r.get("pay"), "years": r.get("years")} for r in g],
@@ -400,7 +402,7 @@ button.act:hover{border-color:var(--acc)}main{max-width:980px;margin:0 auto;padd
 @media (prefers-color-scheme:dark){.g.Referral{background:#16341f;color:#56d364}.g.Top{background:#14243f;color:#79b0ff}}
 .facts{display:flex;gap:14px;flex-wrap:wrap;color:var(--mut);font-size:13.5px;margin:6px 0}.facts b{color:var(--fg);font-weight:600}
 .watch{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.w{font-size:12px;background:var(--warnbg);color:var(--warn);border-radius:999px;padding:1px 9px;font-weight:600}
-.locs{margin:6px 0;font-size:14px}.locs label{display:block;padding:2px 0}.req,.notes{font-size:13.5px;color:var(--mut);margin:4px 0}
+.w.f{background:var(--chip);color:var(--fg);border:1px solid var(--line)}.locs{margin:6px 0;font-size:14px}.locs label{display:block;padding:2px 0}.req,.notes{font-size:13.5px;color:var(--mut);margin:4px 0}
 .grey{font-size:13px;color:var(--no)}details{margin:8px 0 2px}summary{cursor:pointer;color:var(--acc);font-size:14px}
 .desc{white-space:pre-wrap;font-size:14px;max-height:420px;overflow:auto;border-top:1px solid var(--line);margin-top:6px;padding-top:8px}
 .desc mark{background:var(--warnbg);color:var(--warn);font-weight:600}
@@ -436,7 +438,7 @@ L.innerHTML=data.cards.map((c,i)=>{const multi=c.rows.length>1;const locs=c.rows
 const act=tab==="skipped"?`<button class="add" data-a="restore">Bring back</button>`:`<button class="add" data-a="add">Add<kbd>A</kbd></button><button class="skip" data-a="skip">Skip<kbd>S</kbd></button><button data-a="later">Later<kbd>L</kbd></button><span class="reasons">${reasons.map((r,j)=>`<button data-r="${esc(r)}">${j+1} ${esc(r)}</button>`).join("")}<button data-o="1">O other...</button><input placeholder="type a reason, Enter"><button data-r="">no reason</button></span>`;
 return `<div class="card" tabindex="0" data-i="${i}"><div class="top"><span class="co">${esc(c.company)}</span><span class="g ${esc(c.group)}">${esc(c.group)}</span>${c.role?`<span class="g">${esc(c.role)}</span>`:""}</div>
 <div class="ti">${esc(c.title)}</div><div class="facts"><span>Years <b>${c.years??"not stated"}</b></span><span>Fit <b>${c.fit??"?"}</b>/10</span><span>Pay <b>${esc(c.pay||"not listed")}</b></span><span>Posted <b>${c.posted?esc(c.posted)+" ("+c.ago+"d ago)":"?"}</b></span>${multi?`<span><b>${c.rows.length}</b> locations</span>`:""}</div>
-${c.watch.length?`<div class="watch">${c.watch.map(w=>`<span class="w">${esc(w)}</span>`).join("")}</div>`:""}
+${c.watch.length||c.flags.length?`<div class="watch">${c.flags.map(w=>`<span class="w f">${esc(w)}</span>`).join("")}${c.watch.map(w=>`<span class="w">${esc(w)}</span>`).join("")}</div>`:""}
 <div class="locs">${locs}</div>${c.requirements?`<div class="req">Requirements: ${esc(c.requirements)}</div>`:""}${c.filtered?`<div class="grey">Greyed: ${esc(c.filtered)}</div>`:""}${c.reason!=null&&tab==="skipped"?`<div class="grey">Skipped ${esc(c.when)}${c.reason?": "+esc(c.reason):""}</div>`:""}
 ${c.fit_notes?`<div class="notes">Fit: ${esc(c.fit_notes)}</div>`:""}<details><summary>Description</summary><div class="desc">${c.description?mark(c.description,c.watch):"Not saved. Use the link above."}</div></details>
 <div class="btns">${act}</div></div>`}).join("");
