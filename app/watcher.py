@@ -19,21 +19,22 @@ import json
 import re
 import sys
 import time
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qsl, parse_qs, urlparse
 
 import requests
 from requests import ConnectionError as NetError, HTTPError, Timeout
 
 import geo
 from common import APP_DIR, Tracker, num, split_list, today, to_date
-from scoring import _kw_rx, is_senior_title, keyword_score, title_has
+from scoring import _kw_rx, is_senior_title, keyword_score, role_of, senior_reason, title_has, track_of
 
 STATE_PATH = APP_DIR / "watch_state.json"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/129.0 Safari/537.36")
 H = {"User-Agent": UA, "Accept": "application/json, text/html;q=0.9, */*;q=0.8", "Accept-Language": "en-US,en;q=0.9"}
 WORKDAY_PAGES = 3      # x 20 results per search term
-SEARCH_TERMS_MAX = 12  # search terms used on systems that support search
+WORKDAY_WALK_PAGES = 60  # x 20: the whole board read newest-first, back to your scan window (1,200 postings at most)
+SEARCH_TERMS_MAX = 60  # search terms used on systems that support search (all of yours, in practice)
 
 
 def get(url, **kw):
@@ -78,6 +79,14 @@ def detect(url: str):
     u = urlparse(url.strip())
     host, q = u.netloc.lower(), parse_qs(u.query)
     parts = [p for p in u.path.split("/") if p]
+    if host.endswith("applytojob.com"):
+        return "JazzHR", {"sub": host.split(".")[0]}
+    if host.endswith("applicantstack.com"):
+        return "ApplicantStack", {"host": u.netloc}
+    if host.endswith("amazon.jobs"):
+        return "Amazon", {}
+    if host.endswith("daed.com"):
+        return "Daedalus", {}
     if "myworkdayjobs.com" in host:
         site = [p for p in parts if not re.fullmatch(r"[a-z]{2}-[A-Z]{2}", p) and p not in ("job", "jobs")]
         if site:
@@ -117,7 +126,7 @@ def detect(url: str):
             return "Paylocity", {"guid": m.group(1).lower()}
     if host.endswith(".icims.com"):
         return "iCIMS", {"host": u.netloc}
-    m = re.search(r"(/(?:hcmUI/CandidateExperience/)?[a-z]{2}(?:-[A-Za-z]{2})?/sites)/(CX_\w+)", u.path)
+    m = re.search(r"(/(?:hcmUI/CandidateExperience/)?[a-z]{2}(?:-[A-Za-z]{2})?/sites)/(CX(?:_\w+)?)(?![\w])", u.path)
     if m:
         return "Oracle", {"host": u.netloc, "site": m.group(2), "ui": m.group(1)}
     if host.endswith("jobs.apple.com"):
@@ -167,8 +176,12 @@ def discover(url: str):
     if "career4.successfactors.com" in u.netloc or "careers?company=" in url:
         return None, {}, ("this is SuccessFactors' old-style portal; look for the company's newer careers site "
                           "(open a job there, click Apply, and use that page's link)")
-    # Eightfold career sites live on the company's own domain: probe their job feed
-    domain = (parse_qs(u.query).get("domain") or [".".join(u.netloc.lower().split(".")[-2:])])[0]
+    # Eightfold career sites live on the company's own domain: probe their job feed. The feed's 'domain' is often
+    # not the site's own (jobs.northropgrumman.com uses domain=ngc.com), so read it from the page when it says.
+    pm = re.search(r"[?&](?:amp;)?domain=([a-z0-9-]+(?:\.[a-z0-9-]+)+)", html, re.I) or \
+        re.search(r'"domain"\s*:\s*"([a-z0-9-]+(?:\.[a-z0-9-]+)+)"', html, re.I)
+    domain = (parse_qs(u.query).get("domain") or [pm.group(1).lower() if pm else
+                                                   ".".join(u.netloc.lower().split(".")[-2:])])[0]
     for params in ({"domain": domain, "num": 1}, {"domain": domain, "start": 0, "num": 1, "query": ""}):
         try:
             r = requests.get(f"https://{u.netloc}/api/apply/v2/jobs", params=params,
@@ -214,12 +227,18 @@ def page_system(u, html):
     m = re.search(r"/Recruiting/Jobs/All/([0-9a-fA-F-]{36})", html)
     if m:
         return "Paylocity", {"guid": m.group(1).lower()}
+    m = re.search(r'data-ajax-url="(/(?:[a-z]{2}(?:-[a-z]{2})?/)?search-jobs/results)"', html)
+    if m or re.search(r"tbcdn\.talentbrew|radancy", html, re.I) and "/search-jobs" in html:
+        return "Radancy", {"host": u.netloc, "path": m.group(1) if m else "/search-jobs/results"}
+    if re.search(r"jibecdn|jibeapply|window\._jibe|\bJIBE\b", html) and "/jobs" in (u.path or "/jobs"):
+        return "Jibe", {"host": u.netloc}
     if re.search(r"phApp\.ddo|phenompeople", html):
-        return "Phenom", {"host": u.netloc, "loc": _phenom_loc(u.path)}
+        # keep any filter from the link (e.g. ?qcountry=United States of America) for every search
+        return "Phenom", {"host": u.netloc, "loc": _phenom_loc(u.path), "q": u.query or ""}
     if re.search(r"rmkcdn\.successfactors|jobTitle-link|careersite[_-]?sf|j2w\.|successfactors\.com/careers", html, re.I) \
             and "career4.successfactors.com" not in u.netloc:
         return "SuccessFactors", {"host": u.netloc, "prefix": _sf_prefix(u.path)}
-    m = re.search(r"(/(?:hcmUI/CandidateExperience/)?[a-z]{2}(?:-[A-Za-z]{2})?/sites)/(CX_\w+)", html) \
+    m = re.search(r"(/(?:hcmUI/CandidateExperience/)?[a-z]{2}(?:-[A-Za-z]{2})?/sites)/(CX(?:_\w+)?)(?![\w])", html) \
         or re.search(r"siteNumber[\"'=:\s]+(CX_\w+)", html)
     if m:
         site = m.group(m.lastindex)
@@ -274,37 +293,56 @@ def wd_post(p, url, body):
 
 
 def fetch_workday(p, terms):
+    """Two passes, merged: (1) the whole board newest-first, back to your scan window, so every recent job is seen
+    whatever its title; (2) your keyword searches (all of them), which catch jobs a board lists out of date order."""
     base = f"https://{p['host']}/wday/cxs/{p['tenant']}/{p['site']}"
     out, failed = {}, 0
-    try:  # how many postings the whole board has (decides "small company" on a first scan)
-        BOARD_SIZE["Workday"] = int(wd_post(p, f"{base}/jobs", {"appliedFacets": {}, "limit": 1, "offset": 0,
-                                                                 "searchText": ""}).get("total") or 0) or None
+
+    def keep(posts):
+        for j in posts:
+            path = j.get("externalPath") or ""
+            if not path or path in out:
+                continue
+            link = (f"https://{p['host']}/recruiting/{p['tenant']}/{p['site']}{path}" if p.get("mws")
+                    else f"https://{p['host']}/{p['site']}{path}")
+            out[path] = _p(path, j.get("title"), j.get("locationsText"), link,
+                           workday_posted(j.get("postedOn")), {"_wd_detail": f"{base}{path}"})
+
+    # 1) the board, newest first, until two pages in a row are entirely older than the window
+    old_pages = 0
+    try:
+        for page in range(WORKDAY_WALK_PAGES):
+            data = wd_post(p, f"{base}/jobs", {"appliedFacets": {}, "limit": 20, "offset": page * 20, "searchText": ""})
+            if page == 0:  # how many postings the whole board has (decides "small company" on a first scan)
+                BOARD_SIZE["Workday"] = int(data.get("total") or 0) or None
+            posts = data.get("jobPostings") or []
+            keep(posts)
+            dates = [workday_posted(j.get("postedOn")) for j in posts]
+            old = bool(dates) and all(d is not None and (today() - d).days > WINDOW_DAYS for d in dates)
+            old_pages = old_pages + 1 if old else 0
+            if len(posts) < 20 or old_pages >= 2:
+                break
+            time.sleep(0.2)
     except NotJobData:
-        raise
-    except Exception:
-        pass
-    for term in terms or [""]:
+        if not out:
+            raise  # nothing read at all: report it
+        failed += 1
+    # 2) keyword searches (relevance order, first 60 results each)
+    for term in [t for t in terms if t]:
         try:
             for page in range(WORKDAY_PAGES):
                 data = wd_post(p, f"{base}/jobs", {"appliedFacets": {}, "limit": 20, "offset": page * 20, "searchText": term})
                 posts = data.get("jobPostings") or []
-                for j in posts:
-                    path = j.get("externalPath") or ""
-                    if not path or path in out:
-                        continue
-                    link = (f"https://{p['host']}/recruiting/{p['tenant']}/{p['site']}{path}" if p.get("mws")
-                            else f"https://{p['host']}/{p['site']}{path}")
-                    out[path] = _p(path, j.get("title"), j.get("locationsText"), link,
-                                   workday_posted(j.get("postedOn")), {"_wd_detail": f"{base}{path}"})
+                keep(posts)
                 if len(posts) < 20:
                     break
         except NotJobData:
             if not out:
-                raise  # nothing read at all: report it
+                raise
             failed += 1
             break  # keep what was read
     if failed:
-        FETCH_NOTE["Workday"] = "(Workday stopped answering partway; some keyword searches skipped)"
+        FETCH_NOTE["Workday"] = "(Workday stopped answering partway; part of the board or some keyword searches skipped)"
     return list(out.values())
 
 
@@ -407,26 +445,49 @@ def fetch_smartrecruiters(p, terms):
 
 
 PCSX_PAGES = 5        # x 10 jobs per keyword on the newer Eightfold feed
-PCSX_DELAY = 1.2      # seconds between requests: Eightfold limits fast readers
+EIGHTFOLD_WALK_PAGES = 40  # x 10, newest first
+PCSX_DELAY = 2.0      # seconds between requests: Eightfold limits fast readers (more keywords -> more spacing)
 PCSX_WAITS = (8, 20)  # when asked to slow down: wait this long, then try again
+
+
+def _clean_us(loc) -> str:
+    """'San Diego, California, United States of America' -> 'San Diego, California';
+    'USA-CA-San Diego-AA' -> 'San Diego, CA'."""
+    loc = str(loc or "").strip()
+    m = re.fullmatch(r"(?:USA?|United States)\s*-\s*([A-Z]{2})\s*-\s*([^-]+?)(?:\s*-\s*\w+)?", loc)
+    if m:
+        return f"{m.group(2).strip()}, {m.group(1)}"
+    return re.sub(r",?\s*\b(?:United States of America|United States|U\.S\.A\.?|USA|US)\.?$", "", loc).strip()
 
 
 def _eightfold_job(p, j):
     jid = str(j.get("id") or j.get("positionId") or "")
-    locs = j.get("locations") or ([j["location"]] if j.get("location") else [])
+    locs = (j.get("standardizedLocations") or j.get("locations")
+            or ([j["location"]] if j.get("location") else []))
     if isinstance(locs, str):
         locs = [locs]
     url = j.get("canonicalPositionUrl") or j.get("positionUrl") or f"/careers/job/{jid}"
     if url.startswith("/"):
         url = f"https://{p['host']}{url}"
     return _p(jid, j.get("name") or j.get("title") or j.get("posting_name"),
-              "; ".join(str(l).replace(", United States", "") for l in locs[:3]), url,
+              "; ".join(_clean_us(l) for l in locs[:3]), url,
               _ts(j.get("postedTs") or j.get("t_create") or j.get("t_update")))
 
 
 def fetch_eightfold(p, terms):
     """Eightfold has two job feeds. Companies still on the older one keep working as before; companies Eightfold has
-    moved to the newer 'PCSX' feed (the old one answers 403 for them) are read from that instead."""
+    moved to the newer 'PCSX' feed (the old one answers 403 for them) are read from that instead.
+    If both refuse, the careers page usually names the right 'domain' (e.g. lmco.com): try once more with it."""
+    try:
+        return _eightfold_any(p, terms)
+    except (requests.HTTPError, NotJobData):
+        dom = _eightfold_page_domain(p)
+        if not dom or dom == p.get("domain"):
+            raise
+        return _eightfold_any({**p, "domain": dom}, terms)
+
+
+def _eightfold_any(p, terms):
     try:
         return _eightfold_v2(p, terms)
     except requests.HTTPError as e:
@@ -435,11 +496,26 @@ def fetch_eightfold(p, terms):
     return _eightfold_pcsx(p, terms)
 
 
+def _eightfold_page_domain(p):
+    try:
+        html = requests.get(f"https://{p['host']}/careers", headers=H, timeout=20).text or ""
+    except Exception:
+        return None
+    m = re.search(r"[?&](?:amp;)?domain=([a-z0-9-]+(?:\.[a-z0-9-]+)+)", html, re.I) or \
+        re.search(r'"domain"\s*:\s*"([a-z0-9-]+(?:\.[a-z0-9-]+)+)"', html, re.I)
+    return m.group(1).lower() if m else None
+
+
 def _eightfold_v2(p, terms):
     out = {}
-    for term in terms or [""]:
+    for i, term in enumerate(terms or [""]):
+        if i:
+            time.sleep(1.0)  # spaced out: Eightfold limits fast readers
         r = requests.get(f"https://{p['host']}/api/apply/v2/jobs", headers=H, timeout=25,
                          params={"domain": p["domain"], "start": 0, "num": 100, "query": term})
+        if r.status_code in (405, 429) and out:  # asked to slow down partway: keep what was read
+            FETCH_NOTE["Eightfold"] = "(Eightfold asked to slow down partway; some keyword searches skipped)"
+            break
         r.raise_for_status()
         data = r.json()
         if not term and data.get("count"):
@@ -450,8 +526,60 @@ def _eightfold_v2(p, terms):
     return list(out.values())
 
 
+def _pcsx_get(p, params):
+    hdr = {**H, "Accept": "application/json"}
+    r = requests.get(f"https://{p['host']}/api/pcsx/search", params=params, headers=hdr, timeout=25)
+    for wait in PCSX_WAITS:
+        if r.status_code not in (405, 429):
+            break
+        time.sleep(wait)  # asked to slow down: pause, then try the same page again
+        r = requests.get(f"https://{p['host']}/api/pcsx/search", params=params, headers=hdr, timeout=25)
+    return r
+
+
+def _eightfold_newest(p):
+    """The whole board newest-first (sort_by=timestamp), back to your scan window: a few pages instead of a search per
+    keyword. Returns None if this site doesn't sort by date (then keyword searches are used)."""
+    out, old_pages, last = {}, 0, None
+    for page in range(EIGHTFOLD_WALK_PAGES):
+        params = {"domain": p["domain"], "query": "", "location": "United States" if US_ONLY else "",
+                  "start": page * 10, "sort_by": "timestamp"}
+        r = _pcsx_get(p, params)
+        if r.status_code in (405, 429):
+            if not out:
+                return None
+            FETCH_NOTE["Eightfold"] = "(Eightfold asked to slow down partway; part of the board skipped)"
+            break
+        r.raise_for_status()
+        data = (r.json() or {}).get("data") or {}
+        if page == 0 and data.get("count"):
+            BOARD_SIZE["Eightfold"] = int(data["count"])
+        rows = data.get("positions") or []
+        jobs = [_eightfold_job(p, j) for j in rows]
+        dates = [j["posted"] for j in jobs if j.get("posted")]
+        if page == 0 and (len(dates) < max(2, len(rows) // 2) or any(b > a for a, b in zip(dates, dates[1:]))):
+            return None  # not in date order: fall back to keyword searches
+        for j in jobs:
+            if j["id"]:
+                out.setdefault(j["id"], j)
+        last = dates[-1] if dates else last
+        old = bool(dates) and all((today() - d).days > WINDOW_DAYS for d in dates)
+        old_pages = old_pages + 1 if old else 0
+        if len(rows) < 10 or old_pages >= 2:
+            break
+        time.sleep(PCSX_DELAY)
+    return list(out.values())
+
+
 def _eightfold_pcsx(p, terms):
-    """Newer feed: 10 jobs a page, searched by keyword (and United States, unless you include Outside US)."""
+    """Newer feed, 10 jobs a page: read newest-first when the site allows it; otherwise searched by keyword
+    (United States only, unless you include Outside US)."""
+    try:
+        newest = _eightfold_newest(p)
+    except requests.HTTPError:
+        newest = None
+    if newest is not None:
+        return newest
     out, partial = {}, False
     hdr = {**H, "Accept": "application/json"}
     for term in [t for t in terms if t] or [""]:
@@ -492,11 +620,13 @@ def _eightfold_pcsx(p, terms):
 # Both sites put the search results inside the page itself. We read that data; if the layout ever changes,
 # the page is saved to app/debug/ so it can be sent to Claude for a fix.
 SITE_PAGES = 3        # x ~20 results per search term
+SITE_WALK_PAGES = 40  # x ~20: the no-keyword, newest-first read back to your scan window (Apple, Google)
 DEBUG_DIR = APP_DIR / "debug"
 
 
 WINDOW_DAYS = 14      # set from Settings at the start of a run
 FETCH_NOTE = {}       # system -> note about a partial read
+WALK_INFO = {}        # system -> pages of the no-keyword newest-first list read (Apple, Google)
 BOARD_SIZE = {}       # system -> total postings on the company's board, when the site says
 _SESS = None
 
@@ -523,10 +653,27 @@ def site_get(url, params):
 
 
 def _search_site(sysname, url, qkey, base_params, parser, terms):
-    """Search each keyword (newest first), stopping a keyword once its results are older than your window.
+    """First read the whole list newest-first (no keyword) back to your scan window, so every recent job is seen;
+    then search each keyword the same way (catches anything the no-keyword list leaves out).
     A keyword that times out is skipped; if two in a row fail, stop and keep what was read."""
     out, failed, streak = {}, [], 0
-    for term in terms or [""]:
+    WALK_INFO[sysname] = 0
+    try:
+        for page in range(1, SITE_WALK_PAGES + 1):
+            r = site_get(url, {**base_params, qkey: "", "page": page})
+            posts = parser(r.text)
+            WALK_INFO[sysname] = page
+            new = [j for j in posts if j["id"] not in out]
+            out.update({j["id"]: j for j in new})
+            dated = [j["posted"] for j in posts if j.get("posted")]
+            if len(posts) < 15 or not new or (dated and all((today() - d).days > WINDOW_DAYS for d in dated)):
+                break
+            time.sleep(0.6)
+    except HTTPError:
+        raise
+    except Exception:
+        failed.append("(newest-first list)")
+    for term in [t for t in (terms or []) if t]:
         try:
             for page in range(1, SITE_PAGES + 1):
                 r = site_get(url, {**base_params, qkey: term, "page": page})
@@ -550,8 +697,11 @@ def _search_site(sysname, url, qkey, base_params, parser, terms):
         time.sleep(0.6)
     if failed and not out:
         raise Timeout(f"{sysname} didn't answer")
-    if failed:
-        FETCH_NOTE[sysname] = f"(slow site: skipped {len(failed)} keyword search{'es' if len(failed) > 1 else ''})"
+    kw = [f for f in failed if f != "(newest-first list)"]
+    if kw:
+        FETCH_NOTE[sysname] = f"(slow site: skipped {len(kw)} keyword search{'es' if len(kw) > 1 else ''})"
+    elif failed:
+        FETCH_NOTE[sysname] = "(couldn't read the full newest-first list; used keyword searches only)"
     return list(out.values())
 
 
@@ -830,8 +980,9 @@ def parse_phenom(html, p):
 
 def fetch_phenom(p, terms):
     def page(term, n):
+        extra = {k: v for k, v in parse_qsl(p.get("q") or "") if k not in ("keywords", "from", "s")}
         r = hget(f"https://{p['host']}{p.get('loc') or ''}/search-results",
-                params={"keywords": term, "from": n * 10, "s": 1})
+                params={**extra, "keywords": term, "from": n * 10, "s": 1})
         r.raise_for_status()
         return r.text, parse_phenom(r.text, p)
     return _paged("Phenom", terms, page, 10, max_pages=5)
@@ -889,6 +1040,134 @@ def fetch_oracle(p, terms):
                             f"https://{host}{ui}/{site}/job/{j.get('Id')}", _date_any(j.get("PostedDate"))))
         return r.text, posts
     return _paged("Oracle", terms, page, 25, max_pages=20)
+
+
+def _html_lines(html):
+    """HTML description -> text with one line per paragraph / list item (the requirement checks read lines)."""
+    t = re.sub(r"(?i)<\s*(br|/p|/li|/div|/h\d|/tr)\s*/?>", "\n", html or "")
+    t = re.sub(r"(?i)<\s*li[^>]*>", "\n- ", t)
+    t = re.sub(r"<[^>]+>", " ", t)
+    import html as _h
+    t = _h.unescape(t).replace("\xa0", " ")
+    return "\n".join(x for x in (re.sub(r"[ \t]+", " ", ln).strip() for ln in t.splitlines()) if x)
+
+
+def fetch_jibe(p, terms):
+    """Jibe career sites (e.g. careers.jhuapl.edu): a JSON feed of the whole board, newest first, back to your window.
+    The feed carries each job's full text, so the requirement checks don't need to open the pages."""
+    out = []
+    for page in range(1, 31):  # 100 per page
+        r = get(f"https://{p['host']}/api/jobs", params={"page": page, "limit": 100, "sortBy": "posted_date",
+                                                         "descending": "true", "internal": "false"})
+        r.raise_for_status()
+        data = r.json() or {}
+        if page == 1:
+            BOARD_SIZE["Jibe"] = int(data.get("totalCount") or 0) or None
+        rows = [x.get("data", x) for x in data.get("jobs") or []]
+        for j in rows:
+            loc = j.get("full_location") or ", ".join(x for x in (j.get("city"), j.get("state")) if x)
+            if j.get("country") and j.get("country") not in ("United States", "US", "USA"):
+                loc = f"{loc}, {j['country']}"
+            desc = "\n".join(_html_lines(j.get(k)) for k in ("description", "responsibilities", "qualifications")
+                             if j.get(k))
+            slug = j.get("slug") or j.get("req_id")
+            out.append(_p(slug, j.get("title"), loc, f"https://{p['host']}/jobs/{slug}?lang=en-us",
+                          _date_any(str(j.get("posted_date") or "")[:10]), {"_desc": desc}))
+        dates = [x["posted"] for x in out[-len(rows):] if x.get("posted")] if rows else []
+        if len(rows) < 100 or (dates and all((today() - d).days > WINDOW_DAYS for d in dates)):
+            break
+        time.sleep(0.4)
+    return out
+
+
+def fetch_amazon(p, terms):
+    """amazon.jobs: its search feed, US jobs newest first, back to your scan window (full job text included)."""
+    out = []
+    for page in range(60):  # x 100
+        r = get("https://www.amazon.jobs/en/search.json",
+                params={"base_query": "", "loc_query": "United States", "country": "USA", "sort": "recent",
+                        "result_limit": 100, "offset": page * 100})
+        r.raise_for_status()
+        data = r.json() or {}
+        if page == 0:
+            BOARD_SIZE["Amazon"] = int(data.get("hits") or 0) or None
+        rows = data.get("jobs") or []
+        for j in rows:
+            loc = j.get("normalized_location") or ", ".join(x for x in (j.get("city"), j.get("state")) if x)
+            desc = "\n".join(_html_lines(j.get(k)) for k in ("description", "basic_qualifications",
+                                                               "preferred_qualifications") if j.get(k))
+            out.append(_p(j.get("id_icims") or j.get("id"), j.get("title"), str(loc).replace(", USA", ""),
+                          "https://www.amazon.jobs" + str(j.get("job_path") or ""), _date_any(j.get("posted_date")),
+                          {"_desc": desc}))
+        dates = [x["posted"] for x in out[-len(rows):] if x.get("posted")] if rows else []
+        if len(rows) < 100 or (dates and all((today() - d).days > WINDOW_DAYS for d in dates)):
+            break
+        time.sleep(0.4)
+    return out
+
+
+def fetch_radancy(p, terms):
+    """Radancy / TalentBrew career sites (careers.l3harris.com): keyword searches, 100 results a page.
+    These lists show no posted dates, so 'new' means not shown to you before."""
+    out = {}
+    for term in [t for t in terms if t] or [""]:
+        for page in range(1, 4):
+            r = get(f"https://{p['host']}{p.get('path') or '/search-jobs/results'}",
+                    params={"ActiveFacetID": 0, "CurrentPage": page, "RecordsPerPage": 100, "Keywords": term,
+                            "SearchResultsModuleName": "Search Results", "SearchType": 1})
+            r.raise_for_status()
+            html = (r.json() or {}).get("results") or ""
+            rows = re.findall(r'<a href="([^"]+/job/[^"]+)"[^>]*data-job-id="(\d+)"[^>]*>(.*?)</a>', html, re.S)
+            for href, jid, inner in rows:
+                tm = re.search(r"<h2[^>]*>(.*?)</h2>", inner, re.S)
+                lm = re.search(r'class="[^"]*job-location[^"]*"[^>]*>(.*?)<', inner, re.S)
+                loc = _text(lm.group(1)) if lm else ""
+                loc = re.sub(r"^(.+?), [^,]+, ([A-Z]{2})$", r"\1, \2", loc)  # 'Palm Bay, Brevard, FL'
+                out.setdefault(jid, _p(jid, _text(tm.group(1)) if tm else "", loc, f"https://{p['host']}{href}", None))
+            if len(rows) < 100:
+                break
+            time.sleep(0.5)
+        time.sleep(0.3)
+    return list(out.values())
+
+
+def fetch_jazzhr(p, terms):
+    """JazzHR boards (xxx.applytojob.com): the whole list; it shows no posted dates."""
+    r = get(f"https://{p['sub']}.applytojob.com/apply")
+    r.raise_for_status()
+    out = {}
+    for m in re.finditer(r'<a href="(https?://[^"]*applytojob\.com/apply/([A-Za-z0-9]+)/[^"]*)"[^>]*>(.*?)</a>(.*?)</li>\s*</ul>',
+                         r.text, re.S):
+        href, jid, title, rest = m.groups()
+        lm = re.search(r"fa-map-marker'?\"?></i>\s*([^<]+)", rest)
+        out.setdefault(jid, _p(jid, _text(title), _text(lm.group(1)) if lm else "", href.split("?")[0], None))
+    return list(out.values())
+
+
+def fetch_applicantstack(p, terms):
+    """ApplicantStack boards (xxx.applicantstack.com/x/openings): the whole table; no posted dates."""
+    r = get(f"https://{p['host']}/x/openings")
+    r.raise_for_status()
+    out = {}
+    for m in re.finditer(r"<tr[^>]*>(.*?)</tr>", r.text, re.S):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", m.group(1), re.S)
+        lm = re.search(r'href="([^"]*/x/detail/([^"/?]+)[^"]*)"', m.group(1))
+        if not lm or len(cells) < 3:
+            continue
+        href, jid = lm.groups()
+        link = href if href.startswith("http") else f"https://{p['host']}{href if href.startswith('/') else '/' + href}"
+        out.setdefault(jid, _p(jid, _text(cells[0]), _text(cells[2]), link, None))
+    return list(out.values())
+
+
+def fetch_daedalus(p, terms):
+    """daed.com/employment: a short list of openings, all in Pittsburgh."""
+    r = get("https://daed.com/employment")
+    r.raise_for_status()
+    out = {}
+    for href, jid, title in re.findall(r'<a class="opportunity-title" href="(/employment/(\d+))">(.*?)</a>', r.text, re.S):
+        out.setdefault(jid, _p(jid, _text(title), "Pittsburgh, PA", f"https://daed.com{href}", None))
+    return list(out.values())
 
 
 def fetch_bamboohr(p, terms):
@@ -1112,7 +1391,8 @@ def fetch_paylocity(p, terms):
 
 FETCH = {"Apple": fetch_apple, "Google": fetch_google, "Workday": fetch_workday, "Greenhouse": fetch_greenhouse, "Lever": fetch_lever, "Ashby": fetch_ashby,
          "SmartRecruiters": fetch_smartrecruiters, "Eightfold": fetch_eightfold,
-         "SuccessFactors": fetch_successfactors, "Phenom": fetch_phenom, "iCIMS": fetch_icims, "Oracle": fetch_oracle,
+         "Jibe": fetch_jibe, "Amazon": fetch_amazon, "Radancy": fetch_radancy, "JazzHR": fetch_jazzhr,
+         "ApplicantStack": fetch_applicantstack, "Daedalus": fetch_daedalus, "SuccessFactors": fetch_successfactors, "Phenom": fetch_phenom, "iCIMS": fetch_icims, "Oracle": fetch_oracle,
          "BambooHR": fetch_bamboohr, "Rippling": fetch_rippling, "Paylocity": fetch_paylocity, "Breezy": fetch_breezy,
          "Arup": fetch_arup}
 
@@ -1129,14 +1409,30 @@ def parse_keywords(v):
 
 def title_ok(title, s, extra_terms, only=False):
     terms = list(extra_terms) if (only and extra_terms) else split_list(s.get("watch_terms")) + list(extra_terms)
-    if terms and not any(title_has(t, title) for t in terms):
-        return False, "title"
-    skip = split_list(s.get("watch_exclude")) + split_list(s.get("dealbreakers"))
-    if any(_kw_rx(w).search(title) for w in skip):
-        return False, "skip word"
-    if str(s.get("watch_skip_senior") or "Yes").lower().startswith("y") and is_senior_title(title, s):
-        return False, "senior"
+    hit = [t.strip("\"“”'") for t in terms if title_has(t, title)]
+    if terms and not hit:
+        return False, "no title keyword"
+    # a skip/senior word that is part of a title term you asked for doesn't count:
+    # term 'associate product manager' lets that title through despite 'manager' (but 'Senior ...' is still skipped)
+    skip = [w for w in split_list(s.get("watch_exclude")) + split_list(s.get("dealbreakers"))
+            if not any(_kw_rx(w).search(h) for h in hit)]
+    bad = next((w for w in skip if _kw_rx(w).search(title)), None)
+    if bad:
+        return False, f"skip word: {bad}"
+    if str(s.get("watch_skip_senior") or "Yes").lower().startswith("y"):
+        sr = senior_reason(title, s, hit)
+        if sr is not None:
+            return False, f"senior: {sr}"
     return True, ""
+
+
+def outside_us(title, loc):
+    """True for a posting outside the US: a German/French gender tag in the title, or a foreign place/country
+    that isn't also a US place."""
+    loc = str(loc or "")
+    if geo.foreign_tag(title):
+        return True
+    return geo.is_foreign(title, loc) and not geo.us_city(geo.locate(loc), loc)
 
 
 def matches(job, s, extra_terms, geo_cfg, only=False):
@@ -1146,7 +1442,7 @@ def matches(job, s, extra_terms, geo_cfg, only=False):
         return False, why, None, None
     loc = job["location"]
     allowed = {a.strip().lower() for a in split_list(s.get("watch_areas"))}
-    if geo.is_foreign(job["title"], loc) and not any(c.get("state") in geo.CODES for c in geo.locate(loc)):
+    if outside_us(job["title"], loc):
         return ("outside us" in allowed), "location", "Outside US", "Outside US"
     if re.search(r"\bremote\b", loc, re.I):
         return ("remote" in allowed), "location", "Remote", "Remote"
@@ -1176,6 +1472,7 @@ def save_state(st):
 # ------------------------------------------------------------------ run
 MIN_WINDOW = 7
 HTML_SYSTEMS = {"Apple", "Google", "SuccessFactors", "Phenom", "iCIMS", "Paylocity", "Oracle", "BambooHR", "Rippling",
+                "JazzHR", "ApplicantStack", "Daedalus",
                 "Breezy", "Arup"}
 DEBUG_TAG = None
 
@@ -1225,7 +1522,7 @@ def area_name(loc, geo_cfg):
     loc = str(loc or "")
     if re.search(r"\bremote\b", loc, re.I):
         return "Remote"
-    if geo.is_foreign("", loc) and not any(c.get("state") in geo.CODES for c in geo.locate(loc)):
+    if geo.is_foreign("", loc) and not geo.us_city(geo.locate(loc), loc):
         return "Outside US"
     res = geo.classify(loc, geo_cfg)
     if not res.get("area_type"):
@@ -1261,13 +1558,175 @@ def where_summary(posts, geo_cfg, top=4):
     return " · ".join(f"{n} {c}" for n, c in shown) + (f" · +{more} more areas" if more > 0 else "")
 
 
-def run(tr, interactive=True, priorities=None, area=None):
+# ------------------------------------------------------------------ pass 2: read descriptions, check requirements
+DESC_CACHE = APP_DIR / "desc_cache.json"
+DESC_KEEP_DAYS = 30
+SLOW_HOSTS = ("eightfold", "careers.qualcomm", "careers.appliedmaterials", "jobs.northropgrumman")
+
+
+def _load_desc_cache() -> dict:
+    try:
+        data = json.loads(DESC_CACHE.read_text())
+    except Exception:
+        return {}
+    cut = (today() - dt.timedelta(days=DESC_KEEP_DAYS)).isoformat()
+    return {k: v for k, v in data.items() if isinstance(v, dict) and v.get("d", "") >= cut}
+
+
+def _save_desc_cache(cache: dict):
+    items = sorted(cache.items(), key=lambda kv: kv[1].get("d", ""), reverse=True)[:3000]
+    try:
+        DESC_CACHE.write_text(json.dumps(dict(items)))
+    except Exception:
+        pass
+
+
+def register_eightfold_domains(wl):
+    """Tell the description reader which Eightfold 'domain' each branded careers host uses (from the Watchlist
+    link's ?domain=...), e.g. jobs.northropgrumman.com -> ngc.com. Without it Northrop descriptions can't be read."""
+    import extract
+    from urllib.parse import parse_qs
+    for w in wl or []:
+        for url in (w.get("url"),):
+            try:
+                u = urlparse(str(url or ""))
+                d = (parse_qs(u.query).get("domain") or [None])[0]
+                if u.netloc and d:
+                    extract.EIGHTFOLD_DOMAINS[u.netloc.lower()] = d
+            except (ValueError, AttributeError, TypeError):
+                pass
+
+
+def fetch_descriptions(cands: list) -> dict:
+    """{link: description text or None}. Several companies at once; one site at a time per company (slow sites
+    spaced out); 30-day cache so a filtered job isn't downloaded again tomorrow."""
+    from concurrent.futures import ThreadPoolExecutor
+    import extract
+    cache = _load_desc_cache()
+    out, todo = {}, {}
+    for c in cands:
+        link = c["pj"]["link"]
+        if c["pj"].get("_desc"):
+            out[link] = c["pj"]["_desc"]
+        elif link in cache:
+            out[link] = cache[link].get("t")
+        elif link:
+            todo.setdefault(urlparse(link).netloc.lower(), []).append(link)
+
+    def work(host_links):
+        host, links = host_links
+        delay = 1.2 if any(h in host for h in SLOW_HOSTS) else 0.3
+        res = {}
+        for i, link in enumerate(links):
+            try:
+                d = extract.extract(link, None)
+                text = d.get("description") or ""
+                res[link] = text if len(text) >= 200 else None
+            except Exception:
+                res[link] = None
+            if i < len(links) - 1:
+                time.sleep(delay)
+        return res
+
+    if todo:
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for res in ex.map(work, todo.items()):
+                for link, text in res.items():
+                    out[link] = text
+                    if text:
+                        cache[link] = {"d": today().isoformat(), "t": text[:20000]}
+        # one more try for the ones that failed: usually a busy site saying "slow down" for a moment
+        retry = {}
+        for host, links in todo.items():
+            miss = [l for l in links if not out.get(l)]
+            if miss:
+                retry[host] = miss
+        if retry:
+            time.sleep(5)
+            with ThreadPoolExecutor(max_workers=6) as ex:
+                for res in ex.map(work, retry.items()):
+                    for link, text in res.items():
+                        if text:
+                            out[link] = text
+                            cache[link] = {"d": today().isoformat(), "t": text[:20000]}
+        _save_desc_cache(cache)
+    return out
+
+
+def check_requirements(cands: list, s) -> None:
+    """Fills each candidate's row with Pay, Requirements and (if it fails a check) Filtered."""
+    import reqcheck
+    from common import fmt_pay, parse_pay
+    descs = fetch_descriptions(cands)
+    fit_kw = split_list(s.get("fit_keywords"))
+    for c in cands:
+        row, desc = c["row"], descs.get(c["pj"]["link"])
+        if not desc:
+            row["requirements"], row["filtered"], c["kind"] = "not checked (couldn't read the posting)", None, None
+            continue
+        r = reqcheck.check(desc, s)
+        row["requirements"], row["filtered"], c["kind"], c["evidence"] = r["requirements"], r["filtered"], r["kind"], r["evidence"]
+        lo, hi, unit = parse_pay(desc)
+        if lo:
+            row["pay"] = fmt_pay(lo, hi, unit)
+            top = num(hi or lo) * (2080 if str(unit).startswith("H") else 1)
+            floor = num(s.get("min_pay"))
+            if not row["filtered"] and floor and top < floor and \
+                    str(s.get("watch_pay_filter") or "Yes").strip().lower().startswith("y"):
+                yearly = f" (about ${top:,.0f}/yr at most)" if str(unit).startswith("H") else ""
+                row["filtered"], c["kind"] = f"pay: {row['pay']}{yearly}, below your minimum ${floor:,.0f}", "pay"
+            start = num(lo) * (2080 if str(unit).startswith("H") else 1)
+            ceiling = num(s.get("watch_pay_ceiling"))
+            if not row["filtered"] and ceiling and start >= ceiling:
+                row["filtered"], c["kind"] = (f"pay: starts at ${start:,.0f}, at or above your senior-level line "
+                                              f"${ceiling:,.0f}"), "pay"
+        q, _, _ = keyword_score(c["pj"]["title"], desc, fit_kw)
+        if q is not None:
+            row["quick"] = round(q, 1)
+
+
+def write_skipped(filtered: list):
+    """app/debug/skipped.csv: every posting filtered in the last scan, with the reason and the posting's words."""
+    import csv
+    try:
+        DEBUG_DIR.mkdir(exist_ok=True)
+        with open(DEBUG_DIR / "skipped.csv", "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f)
+            w.writerow(["Company", "Title", "Location", "Reason", "Posting's words", "Link"])
+            for c in filtered:
+                r = c["row"]
+                w.writerow([r["company"], r["title"], r["location"], r.get("filtered"), c.get("evidence", ""), r["link"]])
+    except Exception:
+        pass
+
+
+def write_titles(log: list):
+    """app/debug/titles.csv: every posting the last scan read, and why it was or wasn't shown. Sort by Result in
+    Excel to find titles your keywords miss ('no title keyword') or words that skip too much."""
+    import csv
+    try:
+        DEBUG_DIR.mkdir(exist_ok=True)
+        cur = DEBUG_DIR / "titles.csv"
+        if cur.exists():
+            cur.replace(DEBUG_DIR / "titles-previous.csv")  # the scan before, for comparing
+        with open(cur, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f)
+            w.writerow(["Company", "Title", "Location", "Posted", "Result", "Link"])
+            for r in sorted(log, key=lambda r: (str(r[0]).lower(), str(r[4]), str(r[1]).lower())):
+                w.writerow([r[0], r[1], r[2], r[3].isoformat() if isinstance(r[3], dt.date) else "", r[4], r[5]])
+    except Exception:
+        pass
+
+
+def run(tr, interactive=True, priorities=None, area=None, deep=None):
     """Scan the Watchlist. priorities = a set like {1} or {1, 2}; None = every active company.
-    area = part of an area name (e.g. 'boston'): only matches there are listed."""
+    area = part of an area name (e.g. 'boston'): only matches there are listed.
+    deep = part of a company name: scan just that company (even if paused) for every open matching job, any age."""
     global WINDOW_DAYS, DEBUG_TAG
     import sheets
     s = tr.s
     wl = sheets.read_watchlist(tr.wb)
+    register_eightfold_domains(wl)
     nm = sheets.read_new_matches(tr.wb)
     st = load_state()
     st.setdefault("seen", {})
@@ -1280,13 +1739,16 @@ def run(tr, interactive=True, priorities=None, area=None):
         st["seen"] = {k: v for k, v in st["seen"].items() if k in shown}
         st["v"] = 2
     geo_cfg = tr.geo_cfg
-    terms = [t.strip("\"“”'") for t in split_list(s.get("watch_terms"))[:SEARCH_TERMS_MAX]]
+    all_terms = [t.strip("\"“”'") for t in split_list(s.get("watch_terms"))]
+    terms = all_terms[:SEARCH_TERMS_MAX]
     quiet_days = int(num(s.get("watch_quiet"), 30))
     global US_ONLY
     US_ONLY = "outside us" not in {a.strip().lower() for a in split_list(s.get("watch_areas"))}
     FETCH_NOTE.clear()
     on_list = {r.get("key") for r in nm if r.get("key")}
     tracked = {str(j.get("link") or "").split("?")[0].lower() for j in tr.jobs if j.get("link")}
+    import common as _common
+    tracked |= {u.split("?")[0].lower() for u in (_common.load_state().get("archived") or {})}  # archived: never again
     norm = lambda x: re.sub(r"[^a-z0-9]+", "", str(x or "").lower())
     tracked_titles = [(norm(j.get("company")), norm(j.get("title"))) for j in tr.jobs if j.get("company") and j.get("title")]
 
@@ -1295,13 +1757,18 @@ def run(tr, interactive=True, priorities=None, area=None):
         c, t = norm(company), norm(title)
         return any(t == tt and c and tc and (c in tc or tc in c) for tc, tt in tracked_titles)
     small = int(num(s.get("watch_small"), 60))
-    found = []
+    found, cands, companies, titles_log, partial = [], [], [], [], []
 
-    active = [w for w in wl if is_active(w) and (priorities is None or sheets.priority_of(w) in priorities)]
-    if not [w for w in wl if is_active(w)]:
-        print("  Your Watchlist tab has no active companies yet. Add a company and its careers link there.")
-    elif not active:
-        print(f"  No active companies with priority {', '.join(map(str, sorted(priorities or [])))}.")
+    if deep:
+        active = [w for w in wl if w.get("url") and deep.lower() in str(w.get("company") or "").lower()]
+        if not active:
+            print(f"  No company on your Watchlist has '{deep}' in its name.")
+    else:
+        active = [w for w in wl if is_active(w) and (priorities is None or sheets.priority_of(w) in priorities)]
+        if not [w for w in wl if is_active(w)]:
+            print("  Your Watchlist tab has no active companies yet. Add a company and its careers link there.")
+        elif not active:
+            print(f"  No active companies with priority {', '.join(map(str, sorted(priorities or [])))}.")
     for w in active:
         if not re.match(r"https?://", w["url"], re.I):
             w["url"] = "https://" + w["url"].lstrip("/")  # e.g. jobs.arup.com/... typed without https://
@@ -1326,12 +1793,16 @@ def run(tr, interactive=True, priorities=None, area=None):
             continue
         w["system"] = sysname
         window, gap_note = window_for(w, s)
-        WINDOW_DAYS = window
+        if deep:
+            window, gap_note = None, " (deep scan: every open matching job, any age)"
+        WINDOW_DAYS = window if window is not None else 3650
         DEBUG_TAG = f"{sysname.lower()}-{re.sub(r'[^a-z0-9]+', '-', str(name).lower()).strip('-')}"
         extra, only = parse_keywords(w.get("keywords"))
-        search = [t.strip("\"“”'") for t in extra] if (only and extra) else terms + [t.strip("\"“”'") for t in extra]
+        search = [t.strip("\"“”'") for t in extra] if (only and extra) else \
+            (all_terms if sysname == "Workday" else terms) + [t.strip("\"“”'") for t in extra]
         t0 = time.time()
         BOARD_SIZE.clear()
+        FETCH_NOTE.clear()  # a partial read belongs to this company only
         try:
             posts = FETCH[sysname](params, search)
         except Exception as e:
@@ -1353,11 +1824,12 @@ def run(tr, interactive=True, priorities=None, area=None):
         first_scan = not isinstance(to_date(w.get("checked")), dt.date)
         # Size is only known when the site says so, or when it hands over its whole job list. Keyword-search sites
         # (Workday, Eightfold, SuccessFactors...) only show search results, so an unknown size counts as big.
-        whole_list = sysname in ("Greenhouse", "Lever", "Ashby", "BambooHR", "Rippling", "Breezy", "Paylocity", "Arup")
+        whole_list = sysname in ("Greenhouse", "Lever", "Ashby", "BambooHR", "Rippling", "Breezy", "Paylocity", "Arup",
+                                 "Jibe", "JazzHR", "ApplicantStack", "Daedalus")
         board = BOARD_SIZE.get(sysname) or (len(posts) if whole_list else small + 1)
         if sysname in FETCH_NOTE:
             board = small + 1  # a partial read can't show a company is small
-        if first_scan and small and board <= small:
+        if first_scan and small and board <= small and not deep:
             window = None  # small company, first look: every matching job that's still open
             gap_note = " (first scan: small company, so every open matching job was checked, however old)"
         company_key = f"{sysname}:{json.dumps(params, sort_keys=True)}"
@@ -1372,77 +1844,414 @@ def run(tr, interactive=True, priorities=None, area=None):
             continue
         for pj in posts:
             key = f"{company_key}|{pj['id']}"
+            log = [name, pj["title"], pj["location"], pj.get("posted"), "", pj["link"]]
+            titles_log.append(log)
             if key in st["seen"] or key in on_list:
+                log[4] = "already shown before"
                 continue  # already shown to you once
             if pj["link"] and pj["link"].split("?")[0].lower() in tracked:
+                log[4] = "already in your tracker"
                 continue
             if already_tracked(name, pj["title"]):
+                log[4] = "already in your tracker (same title)"
                 continue
             if window is not None and pj.get("posted") and (today() - pj["posted"]).days > window:
+                log[4] = f"older than this scan's {window} days"
                 continue  # older than this scan's window: not "new"
             if sysname == "Workday" and (re.fullmatch(r"\d+ locations?", pj["location"].strip(), re.I)
                                          or unclear_place(pj["location"])) and title_ok(pj["title"], s, extra, only)[0]:
                 pj["location"] = workday_location(pj)  # "3 Locations" / "Caesarea" -> the actual places + country
+                log[2] = pj["location"]
             ok, why, label, at = matches(pj, s, extra, geo_cfg, only)
             if not ok:
+                log[4] = f"location: {label or '?'}" if why == "location" else why
                 continue  # not remembered: re-checked next time, so changing your settings brings it back
+            mt = _max_tier(w)
+            if mt and pj["location"]:
+                tier = geo.classify(pj["location"], geo_cfg).get("tier")
+                if tier and tier > mt:
+                    log[4] = f"outside Max Tier {mt} (tier {tier}: {label})"
+                    continue  # not remembered: raising Max Tier later brings it back
             if area and not any(area_hit(a, str(label or "").split(" · ")[0]) for a in split_list(area)):
+                log[4] = f"outside the areas picked this time ({label})"
                 continue  # outside the area you asked for this time: not remembered, so a normal scan still shows it
-            st["seen"][key] = today().isoformat()
+            log[4] = "possible match"
             fit_title, _, _ = keyword_score(pj["title"], "", split_list(s.get("fit_keywords")))
-            found.append({"found": today(), "company": name, "title": pj["title"], "location": pj["location"],
-                          "area": label, "posted": pj.get("posted"), "quick": round(fit_title or 0, 1),
-                          "link": pj["link"], "action": None, "source": sysname, "key": key})
+            cands.append({"key": key, "comp": None, "pj": pj, "kind": None, "log": log,
+                          "row": {"found": today(), "company": name, "title": pj["title"],
+                                  "track": track_of(pj["title"], s), "role_type": role_of(pj["title"], s),
+                                  "co_priority": sheets.priority_of(w),
+                                  "loc_tier": geo.classify(pj["location"], geo_cfg).get("tier") if pj["location"] else None,
+                                  "location": pj["location"],
+                                  "area": label, "posted": pj.get("posted"), "quick": round(fit_title or 0, 1),
+                                  "link": pj["link"], "action": None, "source": sysname, "key": key}})
             new += 1
-        if new:
-            co["last_match"] = today().isoformat()
+        comp = {"w": w, "co": co, "posts": len(posts), "kept": 0, "kinds": {},
+                "note": (f" {FETCH_NOTE[sysname]}" if sysname in FETCH_NOTE else "") + gap_note}
+        for c in cands[len(cands) - new:]:
+            c["comp"] = comp  # one shared record per company
+        companies.append(comp)
+        if sysname in FETCH_NOTE:
+            partial.append(f"{name}: {FETCH_NOTE[sysname].strip('()')}")
         st["first_run_done"][company_key] = today().isoformat()
         w["checked"] = today()
-        w["result"] = (f"{len(posts)} postings scanned, {new} new match{'es' if new != 1 else ''}"
-                       + (f" {FETCH_NOTE[sysname]}" if sysname in FETCH_NOTE else "") + gap_note)
+        print(f"  {name} ({sysname}): {len(posts)} postings scanned, {new} possible match{'es' if new != 1 else ''}"
+              f"{comp['note']}  [{time.time() - t0:.0f}s]")
+
+    # pass 2: read the descriptions of the possible matches only, then check experience / degree / required skills
+    show_filtered = str(s.get("watch_show_filtered") or "Yes").strip().lower().startswith("y")
+    filtered = []
+    if cands:
+        t1 = time.time()
+        print(f"\n  Checking {len(cands)} job description{'s' if len(cands) != 1 else ''}...", end="", flush=True)
+        check_requirements(cands, s)
+        for c in cands:
+            comp, row = c["comp"], c["row"]
+            c["log"][4] = (f"filtered: {row['filtered']}" if row.get("filtered") else
+                           "MATCH" + (" (posting not read)" if str(row.get("requirements", "")).startswith("not checked") else ""))
+            if row.get("filtered"):
+                filtered.append(c)
+                comp["kinds"][c["kind"]] = comp["kinds"].get(c["kind"], 0) + 1
+                if show_filtered:
+                    st["seen"][c["key"]] = today().isoformat()  # shown greyed once, not again tomorrow
+                    found.append(row)
+            else:
+                comp["kept"] += 1
+                st["seen"][c["key"]] = today().isoformat()
+                found.append(row)
+        kinds = {}
+        for c in filtered:
+            kinds[c["kind"]] = kinds.get(c["kind"], 0) + 1
+        print(f" done ({time.time() - t1:.0f}s): {len(cands) - len(filtered)} match"
+              f"{'es' if len(cands) - len(filtered) != 1 else ''}"
+              + (f", {len(filtered)} filtered (" + ", ".join(f"{k} {n}" for k, n in kinds.items()) + ")"
+                 + (" - greyed on New Matches" if show_filtered else " - see app/debug/skipped.csv") if filtered else ""))
+    write_skipped(filtered)
+    write_titles(titles_log)
+    if partial:
+        print("\n  Partly checked (run these again later to catch the rest):")
+        for line in partial:
+            print(f"    - {line}")
+    for comp in companies:
+        w, co = comp["w"], comp["co"]
+        if comp["kept"]:
+            co["last_match"] = today().isoformat()
+        w["result"] = (f"{comp['posts']} postings scanned, {comp['kept']} new match{'es' if comp['kept'] != 1 else ''}"
+                       + (" · filtered: " + ", ".join(f"{k} {n}" for k, n in comp["kinds"].items()) if comp["kinds"] else "")
+                       + comp["note"])
         first, last = _iso(co.get("first") or ""), _iso(co.get("last_match") or "")
         if quiet_days and isinstance(first, dt.date) and (today() - first).days >= quiet_days and \
                 not (isinstance(last, dt.date) and (today() - last).days < quiet_days):
             w["result"] += f" · quiet: no new matches in {quiet_days}+ days (consider Active = No)"
-        print(f"  {name} ({sysname}): {w['result']}  [{time.time() - t0:.0f}s]")
 
-    # newest first: today's finds on top, sorted by posted date then quick score
-    found.sort(key=lambda r: (-(r["posted"] or dt.date(2000, 1, 1)).toordinal(), -r["quick"]))
+    # real matches first (newest, then quick score); filtered ones below them
+    found.sort(key=lambda r: (bool(r.get("filtered")), -(r["posted"] or dt.date(2000, 1, 1)).toordinal(), -r["quick"]))
     keep_days = 30
     old = [r for r in nm if r.get("found") and (today() - to_date(r["found"])).days <= keep_days
            and str(r.get("action") or "").lower() not in ("dismiss", "dismissed")]
-    rows = found + old
+    rows, n_copies = merge_copies(found + old)
+    rows.sort(key=nm_order)
+    if n_copies:
+        print(f"\n  {n_copies} identical cop{'ies' if n_copies != 1 else 'y'} of jobs already listed folded into one row "
+              f"(see 'Same Job, Other Links').")
     sheets.write_watchlist(tr.wb, wl)
-    sheets.write_new_matches(tr.wb, rows, n_new=len(found))
+    fill_columns(tr, rows)
+    sheets.write_new_matches(tr.wb, rows, n_new=sum(1 for r in found if not r.get("filtered")))
     save_state(st)
     return found
 
 
-def add_marked(tr, ai):
-    """Add the New Matches rows you marked 'Add' in Excel (or chose at the prompt)."""
+def add_marked(tr, ai=None):
+    """Add the New Matches rows you marked 'Add' in Excel (or chose at the prompt): no questions, no AI, saved
+    every 5 jobs so nothing is lost if the Mac sleeps. Jobs without pay are listed at the end (and in
+    app/debug/no_pay.txt) so the pay reader can be checked."""
     import add_job
     import sheets
+    from common import fmt_pay
+
+    class _NoAI:  # the AI makes adding slow; Rescore Jobs can use it later
+        enabled, reason, model = False, "skipped for speed", ""
+
+        def __getattr__(self, name):
+            return lambda *a, **k: None
+
+    register_eightfold_domains(sheets.read_watchlist(tr.wb))
     rows = sheets.read_new_matches(tr.wb)
     todo = [r for r in rows if str(r.get("action") or "").strip().lower() == "add" and r.get("link")]
-    for r in todo:
-        print(f"\n  Adding: {r['company']} - {r['title']}")
-        # the watcher read the title/location from the company's own job list: reuse them
-        add_job.add_one(tr, ai, r["link"], hint={"title": r.get("title"), "location": r.get("location"),
-                                                  "company": r.get("company"), "source": r.get("source"),
-                                                  "posted": to_date(r.get("posted"))})
-        r["action"] = "Added"
-    if todo:
-        sheets.write_new_matches(tr.wb, rows, n_new=0)
+    if not todo:
+        return 0
+    print(f"\n  Adding {len(todo)} job(s)...")
+    t0 = time.time()
+    added, unread, no_pay = [], [], []
+
+    def checkpoint():
+        sheets.write_new_matches(tr.wb, sorted(rows, key=nm_order), n_new=0)
         tr.save()
-    return len(todo)
+
+    for i, r in enumerate(todo, 1):
+        try:
+            res = add_job.add_one(tr, _NoAI(), r["link"], quick=True,
+                                  hint={"title": r.get("title"), "location": r.get("location"),
+                                        "company": r.get("company"), "source": r.get("source"),
+                                        "posted": to_date(r.get("posted")), "pay": r.get("pay")})
+        except Exception as e:
+            res = "unread"
+            print(f"  ! {str(r.get('company'))[:18]} - {str(r.get('title'))[:45]}: {type(e).__name__}")
+        if res in ("added", "exists"):
+            r["action"] = "Added"
+            j = tr.find_by_link(r["link"])
+            if res == "added" and j is not None:
+                added.append(j)
+                if r.get("copies"):
+                    more = " ".join(x for x in str(r["copies"]).split("\n") if x.strip())
+                    j["notes"] = (str(j.get("notes") or "") + f" [Same job also posted at: {more}]").strip()
+                if not j.get("pay_min"):
+                    no_pay.append(j)
+            elif res == "exists":
+                print(f"  = already on your list: {str(r.get('company'))[:18]} - {str(r.get('title'))[:45]}")
+        else:
+            unread.append(r)
+            print(f"  ? couldn't read (left marked Add; may be closed): {str(r.get('company'))[:18]} - "
+                  f"{str(r.get('title'))[:45]}")
+        if i % 5 == 0:
+            checkpoint()
+    checkpoint()
+    print(f"\n  Added {len(added)} job(s) in {time.time() - t0:.0f}s to the To Apply tab." +
+          (f" {len(unread)} couldn't be read." if unread else ""))
+    if no_pay:
+        print(f"  {len(no_pay)} without pay in the posting (left blank):")
+        for j in no_pay:
+            print(f"    #{j['id']} {str(j.get('company'))[:18]} - {str(j.get('title'))[:45]}  ({j.get('location') or '?'})")
+        try:
+            (APP_DIR / "debug").mkdir(exist_ok=True)
+            with open(APP_DIR / "debug" / "no_pay.txt", "a", encoding="utf-8") as f:
+                for j in no_pay:
+                    f.write(f"{today()} | #{j['id']} | {j.get('company')} | {j.get('title')} | {j.get('location')} | "
+                            f"{j.get('link')}\n")
+        except OSError:
+            pass
+    return len(added)
 
 
-def scan(tr, ai, priorities=None, area=None):
-    found = run(tr, priorities=priorities, area=area)
+def _refresh_missing_pay(tr):
+    """Saved jobs (To Apply) with no pay: read the posting again and fill pay if it's there now (the readers
+    improve, and some sites keep pay outside the description)."""
+    from common import parse_pay
+    todo = [j for j in tr.jobs if j.get("status") == "Saved" and not j.get("pay_min")
+            and str(j.get("link") or "").startswith("http")]
+    if not todo:
+        return 0
+    descs = fetch_descriptions([{"pj": {"link": j["link"], "title": str(j.get("title") or "")}} for j in todo])
+    n = 0
+    for j in todo:
+        text = descs.get(j["link"])
+        if not text:
+            continue
+        lo, hi, unit = parse_pay(text)
+        if lo:
+            j["pay_min"], j["pay_max"], j["pay_unit"] = lo, hi, unit
+            if len(text) > len(str(j.get("description") or "")):
+                j["description"] = text
+            n += 1
+    if n:
+        print(f"  Filled in pay for {n} saved job(s) on To Apply.")
+    return n
+
+
+def _log_unread(rows):
+    """Why couldn't these postings be read? Ask each job board once more and save what it answered to
+    app/debug/unread.txt (status code and the start of the reply), so the reader can be fixed."""
+    if not rows:
+        return
+    out = []
+    for r in rows[:40]:
+        link = r["link"]
+        try:
+            u = urlparse(link)
+            url = link
+            if "myworkdayjobs.com" in u.netloc:
+                parts = [p for p in u.path.split("/") if p]
+                if "job" in parts:
+                    i = parts.index("job")
+                    site = [p for p in parts[:i] if not re.fullmatch(r"[a-z]{2}-[A-Z]{2}", p)][-1]
+                    url = f"https://{u.netloc}/wday/cxs/{u.netloc.split('.')[0]}/{site}/job/{'/'.join(parts[i + 1:])}"
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}, timeout=20)
+            snippet = re.sub(r"\s+", " ", resp.text[:300])
+            out.append(f"{r.get('company')} | {r.get('title')}\n  {url}\n  -> {resp.status_code} {snippet}\n")
+        except Exception as e:
+            out.append(f"{r.get('company')} | {r.get('title')}\n  {link}\n  -> {type(e).__name__}: {e}\n")
+        time.sleep(0.5)
+    try:
+        (APP_DIR / "debug").mkdir(exist_ok=True)
+        (APP_DIR / "debug" / "unread.txt").write_text("\n".join(out))
+        print(f"  (Saved what the sites answered for {len(out)} unread posting(s) to app/debug/unread.txt)")
+    except OSError:
+        pass
+
+
+def nm_order(r):
+    """New Matches order: rows to decide (and ones marked Add) on top, greyed-out ones below, then rows already
+    added or dismissed at the bottom. Within each group: most recently posted first."""
+    a = str(r.get("action") or "").strip().lower()
+    group = 2 if a in ("added", "dismiss", "dismissed") else (0 if a == "add" or not r.get("filtered") else 1)
+    p, f = to_date(r.get("posted")), to_date(r.get("found"))
+    # newest posting first; ones without a posted date go after the dated ones, newest found first
+    return (group, 0 if p else 1, -(p.toordinal() if p else 0), -(f.toordinal() if f else 0))
+
+
+def merge_copies(rows):
+    """Fold word-for-word copies of one job into one row: same company, title and location AND the same description
+    (job numbers aside), e.g. a company opening 4 identical 'Project Engineer' requisitions. The kept row lists the
+    other links in 'Same Job, Other Links'. Only undecided rows are folded away; a row you added or dismissed is kept
+    and its new copies fold into it. Jobs that share a title but differ in their description stay separate."""
+    import difflib
+    cache = _load_desc_cache()
+
+    def body(r):
+        t = (cache.get(r.get("link")) or {}).get("t") or ""
+        t = re.sub(r"\b(?:R-?\d{4,}|JR\d+|J-\d+|REQ\d+|\d{5,})\b", " ", t)
+        return re.sub(r"\s+", " ", t).strip()[:6000]
+
+    groups = {}
+    for r in rows:
+        if not (r.get("title") and isinstance(r.get("link"), str)):
+            continue
+        k = (str(r.get("company") or "").lower(), re.sub(r"\W+", " ", str(r["title"]).lower()).strip(),
+             str(r.get("location") or "").lower().strip())
+        groups.setdefault(k, []).append(r)
+    drop = set()
+    for g in groups.values():
+        if len(g) < 2:
+            continue
+        # keep: a row you acted on, else the one found first
+        g = sorted(g, key=lambda r: (0 if str(r.get("action") or "").strip() else 1, str(r.get("found") or "")))
+        texts = [body(r) for r in g]
+        for i, main in enumerate(g):
+            if id(main) in drop or not texts[i] or len(texts[i]) < 200:
+                continue
+            for j in range(i + 1, len(g)):
+                r = g[j]
+                if id(r) in drop or str(r.get("action") or "").strip() or not texts[j]:
+                    continue
+                if difflib.SequenceMatcher(None, texts[i], texts[j]).ratio() < 0.98:
+                    continue
+                links = [x for x in str(main.get("copies") or "").split("\n") if x.strip()]
+                for x in [r["link"]] + [y for y in str(r.get("copies") or "").split("\n") if y.strip()]:
+                    if x not in links and x != main.get("link"):
+                        links.append(x)
+                main["copies"] = "\n".join(links)
+                drop.add(id(r))
+    if not drop:
+        return rows, 0
+    return [r for r in rows if id(r) not in drop], len(drop)
+
+
+def _max_tier(w):
+    """Watchlist 'Max Tier' (1-4) for a company, or None for no limit."""
+    try:
+        v = int(float(str(w.get("max_tier") or "").strip()))
+        return v if 1 <= v <= 4 else None
+    except ValueError:
+        return None
+
+
+def fill_columns(tr, rows, force=False):
+    """Track, Role Type, Location Tier, Years and Co. Priority for New Matches rows (empty ones, or all with force)."""
+    s = tr.s
+    for r in rows:
+        t = r.get("title")
+        if not t:
+            continue
+        if force or not r.get("track"):
+            r["track"] = track_of(t, s)
+        if force or not r.get("role_type"):
+            r["role_type"] = role_of(t, s)
+        if force or r.get("co_priority") in (None, ""):
+            r["co_priority"] = tr.company_priority(r.get("company"), r.get("link"))
+        if (force or r.get("loc_tier") in (None, "")) and r.get("location"):
+            r["loc_tier"] = geo.classify(str(r["location"]), tr.geo_cfg).get("tier")
+        # Years: the number in Requirements ("asks 2+ yrs (BS: 4+)" -> 2, for your degree), blank when not stated
+        m = re.match(r"\s*asks (\d+)\+ yrs", str(r.get("requirements") or ""))
+        r["years"] = int(m.group(1)) if m else None
+
+
+def recheck_matches(tr):
+    """Re-run the current rules (title words, experience, degree, skills, pay) on New Matches rows you haven't
+    added or dismissed. Only Pay, Requirements and Filtered change; no row is added, dismissed or removed."""
+    import sheets
+    s = tr.s
+    rows = sheets.read_new_matches(tr.wb)
+    todo = [r for r in rows if str(r.get("action") or "").strip().lower() not in ("added", "dismiss", "dismissed")
+            and isinstance(r.get("link"), str) and r["link"].startswith("http")]
+    if not todo:
+        print("  No rows to recheck (every row is added or dismissed).")
+        return
+    extras, maxt = {}, {}
+    register_eightfold_domains(sheets.read_watchlist(tr.wb))
+    for w in sheets.read_watchlist(tr.wb):
+        extras[str(w.get("company") or "").strip().lower()] = parse_keywords(w.get("keywords"))
+        maxt[str(w.get("company") or "").strip().lower()] = _max_tier(w)
+    was = {id(r): bool(r.get("filtered")) for r in todo}
+    us_out_ok = "outside us" in {a.strip().lower() for a in split_list(s.get("watch_areas"))}
+    cands = []
+    for r in todo:
+        r["filtered"] = None
+        extra, only = extras.get(str(r.get("company") or "").strip().lower(), ([], False))
+        ok, why = title_ok(str(r.get("title") or ""), s, extra, only)
+        if not ok:  # e.g. a skip word you added since this row was found
+            r["filtered"] = f"title: {why}"
+            continue
+        if outside_us(str(r.get("title") or ""), str(r.get("location") or "")) and not us_out_ok:
+            r["filtered"] = "location: Outside US"
+            continue
+        mt = maxt.get(str(r.get("company") or "").strip().lower())
+        tier = geo.classify(str(r.get("location") or ""), tr.geo_cfg).get("tier") if r.get("location") else None
+        if mt and tier and tier > mt:
+            r["filtered"] = f"location: tier {tier}, outside this company's Max Tier {mt}"
+            continue
+        cands.append({"pj": {"link": r["link"], "title": str(r.get("title") or "")}, "row": r, "kind": None})
+    t0 = time.time()
+    print(f"  Rechecking {len(todo)} rows ({len(cands)} descriptions to read; saved ones are reused)...",
+          end="", flush=True)
+    if cands:
+        check_requirements(cands, s)
+    print(f" done ({time.time() - t0:.0f}s)")
+    now_f = sum(1 for r in todo if r.get("filtered") and not was[id(r)])
+    un_f = sum(1 for r in todo if not r.get("filtered") and was[id(r)])
+    unread = sum(1 for r in todo if str(r.get("requirements") or "").startswith("not checked"))
+    fill_columns(tr, rows, force=True)
+    n_pay = _refresh_missing_pay(tr)
+    rows, n_copies = merge_copies(rows)
+    rows.sort(key=nm_order)  # real first
+    sheets.write_new_matches(tr.wb, rows, n_new=0)
     tr.save()
+    print(f"  {now_f} newly greyed, {un_f} no longer greyed, {unread} couldn't be read (kept, marked 'not checked').")
+    if n_copies:
+        print(f"  {n_copies} identical cop{'ies' if n_copies != 1 else 'y'} folded into one row (see 'Same Job, Other Links').")
+    _log_unread([r for r in todo if str(r.get("requirements") or "").startswith("not checked") and not r.get("filtered")])
+    for r in todo:
+        if r.get("filtered") and not was[id(r)]:
+            print(f"    greyed: {str(r.get('company'))[:18]:18} {str(r.get('title'))[:44]:44} {str(r['filtered'])[:70]}")
+    for r in todo:
+        if not r.get("filtered") and was[id(r)]:
+            print(f"    kept now: {str(r.get('company'))[:18]:18} {str(r.get('title'))[:44]}")
+
+
+def scan(tr, ai, priorities=None, area=None, deep=None):
+    shown = run(tr, priorities=priorities, area=area, deep=deep)
+    import linkcheck
+    if linkcheck.due():  # once a week: are your saved jobs still open?
+        try:
+            linkcheck.expire_closed(tr)
+        except Exception as e:
+            print(f"\n  (Skipped the open-posting check: {type(e).__name__})")
+    tr.save()
+    found = [r for r in shown if not r.get("filtered")]  # real matches only; they come first on the tab too
+    n_grey = len(shown) - len(found)
     print("\n  " + "-" * 50)
     if not found:
-        print("  No new matching jobs since the last check.")
+        print("  No new matching jobs since the last check."
+              + (f" ({n_grey} filtered, greyed on New Matches)" if n_grey else ""))
         return
     print(f"  {len(found)} new matching job(s) (also on the New Matches tab):\n")
     for i, r in enumerate(found[:40], 1):
@@ -1452,8 +2261,14 @@ def scan(tr, ai, priorities=None, area=None):
         else:
             posted = "posted ?"
         print(f"  {i:>2}. {r['company'][:18]:18} {r['title'][:46]:46} {str(r['area'] or r['location'])[:26]:26} {posted}")
+        if r.get("requirements") and not str(r["requirements"]).startswith(("years not stated", "not checked")):
+            print(f"      {r['requirements']}" + (f" · {r['pay']}" if r.get("pay") else ""))
+        elif r.get("pay"):
+            print(f"      {r['pay']}")
     if len(found) > 40:
         print(f"  ...and {len(found) - 40} more on the New Matches tab.")
+    if n_grey:
+        print(f"  +{n_grey} filtered (greyed on New Matches, with the reason)")
     try:
         ans = input("\n  Type numbers to add now (e.g. 1 3 4), or press Enter to finish\n"
                     "  (or mark Action = Add in Excel and choose 'a' next time): ").strip()
@@ -1470,9 +2285,7 @@ def scan(tr, ai, priorities=None, area=None):
         if r.get("key") in keys:
             r["action"] = "Add"
     sheets.write_new_matches(tr.wb, rows, n_new=len(found))
-    ai = ai or AI(tr.s)
-    print(f"  AI helper: {'on (' + ai.model + ')' if ai.enabled else 'off - ' + ai.reason}")
-    add_marked(tr, ai)
+    add_marked(tr)
 
 
 def main():
@@ -1483,22 +2296,38 @@ def main():
     tr = Tracker()
     marked = [r for r in sheets.read_new_matches(tr.wb) if str(r.get("action") or "").strip().lower() == "add"]
     print("  s = scan for new jobs (quick, no AI)")
-    print(f"  a = add the {len(marked)} job(s) marked 'Add' on New Matches (slower: reads each posting with the AI)"
+    print(f"  a = add the {len(marked)} job(s) marked 'Add' on New Matches (no questions; about 5-10 s each)"
           if marked else "  a = add jobs marked 'Add' on New Matches (none marked right now)")
     print("  b = both: add marked jobs, then scan")
+    print("  d = deep scan one company: every open matching job, however old (e.g. after adding a big company)")
+    print("  r = recheck the New Matches rows you haven't added or dismissed, with your current settings")
+    print("  x = check now whether your saved jobs are still open (otherwise runs weekly after a scan)")
     try:
         choice = (input("  Choose (Enter = s): ").strip().lower() or "s")[:1]
     except EOFError:
         choice = "s"
+    if choice == "r":
+        recheck_matches(tr)
+        return
+    if choice == "x":
+        import linkcheck
+        linkcheck.expire_closed(tr)
+        tr.save()
+        return
+    if choice == "d":
+        try:
+            who = input("  Which company? Type part of its Watchlist name: ").strip()
+        except EOFError:
+            who = ""
+        if who:
+            scan(tr, None, deep=who)
+        return
     ai = None
     if choice in ("a", "b"):
         if not marked:
             print("  No rows on New Matches have Action = Add." + ("" if choice == "b" else ""))
         else:
-            ai = AI(tr.s)
-            print(f"  AI helper: {'on (' + ai.model + ')' if ai.enabled else 'off - ' + ai.reason}")
-            add_marked(tr, ai)
-            print(f"\n  Added {len(marked)} job(s).")
+            add_marked(tr)
         if choice == "a":
             return
     if choice not in ("s", "b"):

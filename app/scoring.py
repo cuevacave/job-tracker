@@ -253,22 +253,54 @@ def _level_rx(w):
     return re.compile(_TOK_L + re.escape(w.strip()).replace(r"\ ", r"\s*") + _TOK_R, re.I)
 
 
-def senior_reason(title: str, s=None):
-    """The word from your Settings lists that makes this title senior, or None."""
+def senior_reason(title: str, s=None, ignore=()):
+    """The word from your Settings lists that makes this title senior, or None.
+    ignore = title terms you asked for: a word inside one of them doesn't count ('associate product manager')."""
     t = str(title or "")
     senior, levels = _lists(s)
+    if ignore:
+        senior = [w for w in senior if not any(_kw_rx(w).search(x) for x in ignore)]
     lv = {x.strip().lower() for x in levels}
     for m in RANGE_RX.finditer(t):  # 'II/III' kept, 'III/IV' skipped: the lowest level decides
         if m.group(1).lower() in lv:
             return m.group(0)
     t = RANGE_RX.sub(" ", t)
-    for w in senior:
-        if _kw_rx(w).search(t):
-            return w
-    for w in levels:
-        if _level_rx(w).search(t):
-            return w
-    return None
+
+    def reason(x):
+        for w in senior:
+            if _kw_rx(w).search(x):
+                return w
+        for w in levels:
+            if _level_rx(w).search(x):
+                return w
+        return None
+
+    # several levels in one title ('Engineer / Principal Engineer', 'Mechanical Engineer or Senior Mechanical Engineer'):
+    # hiring at either level, so if one of them isn't senior the title is kept and the posting's years decide
+    role = re.compile(r"engineer|manager|analyst|scientist|designer|specialist|architect|technician|developer|"
+                      r"director|lead\b|consultant|associate|coordinator", re.I)
+    t_np = re.sub(r"\([^)]*\)", " ", t)  # '(Operations/Manufacturing)' is not a second level
+    parts = [x for x in re.split(r"\s*/\s*|\s+or\s+", t_np, flags=re.I) if role.search(x)]
+    if len(parts) >= 2 and any(reason(x) is None for x in parts):
+        return None
+    return reason(t)
+
+
+def role_of(title: str, s=None) -> str:
+    """Role Type from Settings > 'Role type: ...' rows, checked top to bottom; 'Other' when none match."""
+    from common import ROLE_TYPES
+    t = str(title or "")
+    for key, name in ROLE_TYPES:
+        words = [w.strip() for w in str((s or {}).get(key) or "").split(",") if w.strip()]
+        if any(_kw_rx(w).search(t) for w in words):
+            return name
+    return "Other"
+
+
+def track_of(title: str, s=None) -> str:
+    """'PM / Customer' when the title has one of Settings > Track words, else 'Engineering'."""
+    words = [w.strip() for w in str((s or {}).get("track_other") or "").split(",") if w.strip()]
+    return "PM / Customer" if any(_kw_rx(w).search(str(title or "")) for w in words) else "Engineering"
 
 
 def is_senior_title(title: str, s=None) -> bool:
@@ -395,7 +427,8 @@ def fit(job: dict, s: dict, ai=None):
     tb = [d for d in split_list(s.get("dealbreakers")) if _kw_rx(d).search(title)]
     pb = [d for d in split_list(s.get("deal_phrases")) if re.search(re.escape(d.lower()), low.lower())]
     my_years = num(s.get("my_years"), 2)
-    req = required_years(desc)
+    import reqcheck
+    req = reqcheck.years_required(desc, reqcheck.my_degree_level(s), s.get("watch_pref_words"))[0]
     lvl = level_score(req, my_years, title, s)
     kw, hits, missing = keyword_score(title, desc, split_list(s.get("fit_keywords")))
 

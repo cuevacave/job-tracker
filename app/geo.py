@@ -93,6 +93,7 @@ Nashville,TN,36.163,-86.781|Portland,OR,45.515,-122.679|Albuquerque,NM,35.084,-1
 # Metro nicknames used by LinkedIn and others -> a representative city
 ALIASES = {
     "greater boston": ("boston", "MA"), "boston metro": ("boston", "MA"),
+    "loves park": ("rockford", "IL"), "rockford - loves park": ("rockford", "IL"),
     "new york city metropolitan area": ("new york", "NY"), "new york metropolitan area": ("new york", "NY"),
     "greater new york": ("new york", "NY"), "nyc": ("new york", "NY"), "new york city": ("new york", "NY"),
     "san francisco bay area": ("sunnyvale", "CA"), "bay area": ("sunnyvale", "CA"), "silicon valley": ("sunnyvale", "CA"),
@@ -184,7 +185,26 @@ def _state_code(s: str):
 
 
 def _clean(part: str) -> str:
-    s = part.lower()
+    s = part.lower().strip()
+    s = re.sub(r"^in[- ]person\s*[-–—:]?\s*", "", s)               # 'In Person — 100 Main St, Springfield, IL'
+    s = re.sub(r"^\d+[a-z]?\s+[^,]+?,\s*(?=[a-z .'-]+,\s*[a-z]{2}\b)", "", s)  # '250 Market St, Springfield, IL'
+    s = re.sub(r"\bstate of\s+", "", s)                             # 'State of Minnesota, United States'
+    s = re.sub(r"\s+of america\b", "", s)                           # 'San Diego, California of America'
+    m = re.match(r"^(?:usa?|united states),\s*([a-z]{2}),\s*([^,]+)$", s)  # 'USA, WA, Redmond'
+    if m and m.group(1).upper() in CODES:
+        s = f"{m.group(2)}, {m.group(1)}"
+    # company-specific formats: 'United States - California - Sylmar', 'United States > Sylmar : 15900 Valley View Ct',
+    # 'US - Chicago, IL', 'Marlborough US-MA'
+    s = re.sub(r"\s*[–—]\s*", " - ", s)  # long dashes: 'USA - California – Irvine'
+    m = re.match(r"^(?:united states(?: of america)?|usa?)\s*-\s*([a-z .]+?)\s*-\s*([^-]+?)\s*$", s)
+    if m and _state_code(m.group(1)):
+        s = f"{m.group(2)}, {m.group(1)}"
+    s = re.sub(r"^(?:united states(?: of america)?|usa?)\s*(?:>|-)\s*", "", s)
+    m = re.match(r"^([a-z]{2})\s*-\s*([^-]+?)(?:\s*-\s*.*)?$", s)  # 'NY - Hauppauge', 'TX - Austin - Park Centre'
+    if m and m.group(1).upper() in CODES:
+        s = f"{m.group(2)}, {m.group(1)}"
+    s = re.sub(r"\s*:\s*\d.*$", "", s)  # ': 15900 Valley View Court'
+    s = re.sub(r"\s*\bus-([a-z]{2})\b", r", \1", s)
     s = re.sub(r"\(.*?\)", " ", s)  # (+3 more), (hybrid)
     s = re.sub(r"\b(remote|hybrid|on-?site|in[- ]office|onsite)\b\s*[-–:|]?\s*", " ", s)
     s = re.sub(r"\b\d{5}(-\d{4})?\b", " ", s)  # zip codes
@@ -229,6 +249,12 @@ def locate(text: str) -> list:
             if len(matches) == 1:
                 c, st = matches[0].split("|")
                 hit = {"state": st, "point": P[matches[0]], "name": f"{c.title()}, {st}"}
+        if not hit and " - " in s:  # 'Rockford - Loves Park Campus': try each piece as a city name
+            for piece in [x.strip() for x in s.split(" - ") if x.strip()]:
+                sub = locate(piece)
+                if sub:
+                    hit = sub[0]
+                    break
         if hit:
             out.append(hit)
     return out
@@ -237,8 +263,10 @@ def locate(text: str) -> list:
 FOREIGN = re.compile(
     r"\b(germany|deutschland|switzerland|schweiz|suisse|france|ireland|united kingdom|england|scotland|wales|netherlands|"
     r"belgium|italy|italia|spain|españa|portugal|poland|polska|czech|austria|österreich|sweden|denmark|norway|finland|"
-    r"israel|india|china|japan|korea|singapore|malaysia|philippines|vietnam|thailand|australia|new zealand|mexico|méxico|"
+    r"israel|india|china|japan|korea|singapore|malaysia|philippines|vietnam|thailand|australia|new zealand|(?<!new )mexico|méxico|"
     r"canada|brazil|brasil|argentina|chile|colombia|costa rica|puerto rico|dominican republic|south africa|"
+    r"queensland|new south wales|western australia|south australia|tasmania|brisbane|sydney|melbourne, vic|perth, wa|"
+    r"canberra|fremantle|adelaide|"
     r"ontario|quebec|québec|british columbia|alberta|toronto|montreal|vancouver|london|paris|munich|münchen|berlin|"
     r"dublin|galway|shanghai|beijing|tokyo|bangalore|bengaluru|hyderabad|tel aviv|zug|zurich|zürich|"
     # places that host many US companies' foreign R&D/manufacturing sites (seen with no country in the posting)
@@ -247,14 +275,45 @@ FOREIGN = re.compile(
     r"shenzhen|hsinchu|taipei|taiwan|hong kong|seoul|osaka|pune|chennai|mumbai|gurgaon|gurugram|noida|kuala lumpur|"
     r"ho chi minh|tijuana|juarez|juárez|monterrey|guadalajara|heredia|alajuela|cartago|são paulo|sao paulo|brno|"
     r"krak[oó]w|wroc[lł]aw|budapest|hungary|romania|bucharest|erlangen|tuttlingen|stuttgart|grenoble|copenhagen|"
-    r"stockholm|helsinki|lausanne|basel|milano)\b"
+    r"stockholm|helsinki|lausanne|basel|milano|malta|greece|turkey|türkiye|indonesia|egypt|saudi arabia|"
+    r"united arab emirates|dubai|abu dhabi|morocco|slovakia|estonia|lithuania|latvia|bulgaria|serbia|croatia|"
+    r"ukraine|peru|uruguay|panama|guatemala|kanata|ottawa|mississauga|markham|waterloo, on|"
+    r"bologna|emilia-romagna|turin|torino|milan|florence|genoa|naples|nova scotia|manitoba|saskatchewan|newfoundland)\b"
     r"|\((?:m/w/d|w/m/d|f/m/d|m/f/d|h/f|f/h|m/w|w/m)\)", re.I)
 
 
 COUNTRY_CODES = re.compile(r"(?<![\w-])(UK|GB|GBR|DEU|IRL|IE|CHE|CH|NLD|NL|FRA|FR|ITA|ESP|POL|AUT|SWE|DNK|BEL|ISR|IND|"
-                           r"CHN|CN|JPN|JP|KOR|SGP|SG|MYS|AUS|NZL|MEX|MX|CAN|CA-ON|CA-QC|CA-BC|BRA|BR|PRI|CRI)(?![\w-])")
+                           r"CHN|CN|JPN|JP|KOR|SGP|SG|MYS|MY|AUS|NZL|MEX|MX|CAN|CA-ON|CA-QC|CA-BC|BRA|BR|PRI|CRI|"
+                           r"SE|DK|BE|TR|HK|KR|TW|TH|PL|NO|AT|ES|IT|PT|HU|CZ|RO|FI|PH|VN|AU|NZ|ZA)(?![\w-])")
 UK_PLACES = re.compile(r"\b(hertfordshire|watford|hampshire|surrey|kent|essex|berkshire|oxfordshire|cambridgeshire|"
                        r"leeds|manchester, uk|edinburgh|glasgow|cardiff|belfast|bristol, uk|reading, uk)\b", re.I)
+
+
+GENDER_TAG = re.compile(r"\((?:m/w/d|w/m/d|f/m/d|m/f/d|f/m/x|m/f/x|w/m/x|m/w/x|h/f|f/h|m/w|w/m)\)", re.I)
+
+
+def foreign_tag(title: str) -> bool:
+    """German/French job-ad gender tags like (m/w/d) or (h/f): only used outside the US, so they beat a place
+    name that looks American (e.g. "Rastatt, DE" read as Delaware)."""
+    return bool(GENDER_TAG.search(str(title or "")))
+
+
+CA_PROVINCE = re.compile(r",\s*(ON|QC|BC|AB|MB|NS|NB|SK|NL|PE)\s*,\s*(CA|CAN)\b")
+
+
+def us_city(cands, text: str = "") -> bool:
+    """True when the location names a real US place: a city whose state is written in the text (not guessed from
+    a bare name like "Italy" -> Italy, TX), and not a foreign city with no US namesake ("Haifa, IL")."""
+    segs = {_state_code(x) for x in re.split(r"[,;()|>/]|\s-\s|-", str(text or "")) if x.strip()}
+    for c in cands or []:
+        st, name = c.get("state"), str(c.get("name") or "")
+        if st not in CODES or st not in segs:
+            continue
+        city = name.rsplit(",", 1)[0] if "," in name else ""
+        if city and FOREIGN.search(city) and not c.get("point"):  # "Haifa, IL" (no such US city) vs "Paris, TX"
+            continue
+        return True
+    return False
 
 
 def is_foreign(text: str, location: str = "") -> bool:
@@ -263,7 +322,8 @@ def is_foreign(text: str, location: str = "") -> bool:
     marker = re.search(r"\((?:m/w/d|w/m/d|f/m/d|m/f/d|h/f|f/h)\)", t, re.I)
     if re.search(r"\b(united states|usa|u\.s\.)\b", t, re.I) and not marker:
         return False
-    return bool(marker or FOREIGN.search(t) or UK_PLACES.search(t) or COUNTRY_CODES.search(str(location or "")))
+    return bool(marker or FOREIGN.search(t) or UK_PLACES.search(t) or COUNTRY_CODES.search(str(location or ""))
+                or CA_PROVINCE.search(str(location or "")))
 
 
 # ------------------------------------------------------------------ classification
@@ -274,6 +334,9 @@ def classify(location: str, cfg: dict) -> dict:
     """cfg: home (lat,lon) or None, home_radius, areas [ {name, center:(lat,lon)|None, state:str|None, radius, bonus} ],
     region (set of state codes). Returns {area, area_type, miles, area_bonus}."""
     cands = locate(location)
+    if location and is_foreign("", location) and not us_city(cands, location):
+        # e.g. "Haifa, IL" or "Bangalore, IN": a foreign place whose country code looks like a US state
+        return {"area": "Outside US", "area_type": "Elsewhere", "miles": None, "area_bonus": None}
     if not cands:
         if location and is_foreign("", location):
             return {"area": "Outside US", "area_type": "Elsewhere", "miles": None, "area_bonus": None}
@@ -286,24 +349,29 @@ def classify(location: str, cfg: dict) -> dict:
         if pt and cfg.get("home"):
             d = miles(pt, cfg["home"])
             if d <= cfg.get("home_radius", 40):
-                res = {"area": f"Home · {d:.0f} mi", "area_type": "Home", "miles": round(d, 1), "area_bonus": None}
+                res = {"area": f"Home · {d:.0f} mi", "area_type": "Home", "miles": round(d, 1), "area_bonus": None,
+                       "tier": 1}
         if not res:
             for a in cfg.get("areas", []):
                 if a.get("state") and st == a["state"]:
-                    res = {"area": a["name"], "area_type": "Area", "miles": None, "area_bonus": a.get("bonus", 0)}
+                    res = {"area": a["name"], "area_type": "Area", "miles": None, "area_bonus": a.get("bonus", 0),
+                           "tier": a.get("tier") or 2}
                 elif pt and a.get("center"):
                     d = miles(pt, a["center"])
                     if d <= a.get("radius", 35):
                         res = {"area": f"{a['name']} · {d:.0f} mi", "area_type": "Area", "miles": round(d, 1),
-                               "area_bonus": a.get("bonus", 0)}
+                               "area_bonus": a.get("bonus", 0), "tier": a.get("tier") or 2}
                 if res:
                     break
         if not res and st in cfg.get("region", set()):
-            res = {"area": f"Region · {c['name']}", "area_type": "Region", "miles": None, "area_bonus": None}
+            res = {"area": f"Region · {c['name']}", "area_type": "Region", "miles": None, "area_bonus": None, "tier": 3}
         if not res and st:
-            res = {"area": f"Elsewhere · {c['name']}", "area_type": "Elsewhere", "miles": None, "area_bonus": None}
-        if res and (best is None or (RANK[res["area_type"]], res.get("area_bonus") or 0, -(res.get("miles") or 0))
-                    > (RANK[best["area_type"]], best.get("area_bonus") or 0, -(best.get("miles") or 0))):
+            res = {"area": f"Elsewhere · {c['name']}", "area_type": "Elsewhere", "miles": None, "area_bonus": None,
+                   "tier": 4}
+        if res and (best is None or (-(res.get("tier") or 9), RANK[res["area_type"]], res.get("area_bonus") or 0,
+                                     -(res.get("miles") or 0))
+                    > (-(best.get("tier") or 9), RANK[best["area_type"]], best.get("area_bonus") or 0,
+                       -(best.get("miles") or 0))):
             best = res
     return best or {"area": "?", "area_type": None, "miles": None, "area_bonus": None}
 
@@ -326,10 +394,11 @@ def config(settings: dict, areas: list) -> dict:
         st = _state_code(center)
         if st and "," not in center:
             cfg["areas"].append({"name": a.get("name") or center, "state": st, "center": None,
-                                 "radius": None, "bonus": a.get("bonus") or 0})
+                                 "radius": None, "bonus": a.get("bonus") or 0, "tier": a.get("tier")})
         else:
             cfg["areas"].append({"name": a.get("name") or center, "state": None, "center": point_for(center),
                                  "radius": float(a.get("radius") or 35), "bonus": a.get("bonus") or 0,
+                                 "tier": a.get("tier"),
                                  "_missing": point_for(center) is None})
     return cfg
 

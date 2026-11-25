@@ -6,9 +6,17 @@ app/__pycache__/
 app/accounts.json
 app/state.json
 app/watch_state.json
+app/desc_cache.json
 app/places.json
 Postings/*
 !Postings/.keep
 ~$*.xlsx
 *(saving).xlsx
 .DS_Store
+# your job data, caches and exports (the Job_Tracker.xlsx in this repo is an empty template)
+app/archive.csv
+jobs.csv
+Job_Tracker-*.xlsx
+Job_Tracker_*.xlsx
+Old_*.xlsx
+*.tmp

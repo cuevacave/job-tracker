@@ -237,6 +237,29 @@ def from_smartrecruiters(url):
     secs = (j.get("jobAd") or {}).get("sections") or {}
     desc = "\n\n".join(html_to_text((secs.get(k) or {}).get("text", ""))
                        for k in ("companyDescription", "jobDescription", "qualifications", "additionalInformation"))
+    # pay is often NOT in the text ("The target compensation ranges are listed."): it sits in the posting's own
+    # compensation field or custom fields (Intuitive lists one range per region), or only on the public page
+    pay_lines = []
+    comp = j.get("compensation") or {}
+    if isinstance(comp, dict) and (comp.get("min") or comp.get("max")):
+        per = str(comp.get("period") or comp.get("frequency") or "year").lower()
+        pay_lines.append(f"Pay range: ${comp.get('min') or comp.get('max')} - ${comp.get('max') or comp.get('min')} per "
+                         f"{'hour' if 'hour' in per else 'year'}")
+    for cf in j.get("customField") or []:
+        lab, val = str(cf.get("fieldLabel") or ""), str(cf.get("valueLabel") or "")
+        if re.search(r"salary|pay|compensation|wage|range", lab, re.I) and re.search(r"\d", val):
+            pay_lines.append(f"{lab}: {val if '$' in val else '$' + val}")
+    if not pay_lines and not re.search(r"\$\s?\d", desc) and re.search(r"compensation|pay|salary", desc, re.I):
+        try:
+            page = get(f"https://jobs.smartrecruiters.com/{m.group(1)}/{m.group(2)}")
+            if page.status_code == 200:
+                for line in html_to_text(page.text).splitlines():
+                    if re.search(r"\$\s?\d", line) and len(line) < 300:
+                        pay_lines.append(line.strip())
+        except Exception:
+            pass
+    if pay_lines:
+        desc = desc.rstrip() + "\n\nPay:\n" + "\n".join(dict.fromkeys(pay_lines))
     d = {"title": j.get("name"), "company": (j.get("company") or {}).get("name"),
          "location": ", ".join(x for x in [loc.get("city"), loc.get("region")] if x),
          "description": desc.strip(), "emp_type": (j.get("typeOfEmployment") or {}).get("label"),
@@ -275,6 +298,9 @@ def from_linkedin(url):
     return d
 
 
+EIGHTFOLD_DOMAINS = {}  # careers host -> Eightfold domain, from your Watchlist (jobs.northropgrumman.com -> ngc.com)
+
+
 def from_eightfold(url):
     """Career sites powered by Eightfold (e.g. apply.omnicell.com/careers/job/123, *.eightfold.ai)."""
     u = urlparse(url)
@@ -287,7 +313,7 @@ def from_eightfold(url):
     if "eightfold.ai" in host:
         domain = (q.get("domain") or [host.split(".")[0] + ".com"])[0]
     else:
-        domain = (q.get("domain") or [".".join(host.split(".")[-2:])])[0]
+        domain = (q.get("domain") or [EIGHTFOLD_DOMAINS.get(host.lower()) or ".".join(host.split(".")[-2:])])[0]
     r = requests.get(f"https://{host}/api/apply/v2/jobs/{pid}", params={"domain": domain},
                      headers={**HEADERS, "Accept": "application/json"}, timeout=20)
     j = r.json() if r.status_code == 200 and "json" in r.headers.get("content-type", "json") else {}
@@ -301,7 +327,8 @@ def from_eightfold(url):
             return None
         j = {"name": n.get("name"), "locations": n.get("locations") or ([n["location"]] if n.get("location") else []),
              "job_description": n.get("jobDescription") or "", "work_location_option": n.get("workLocationOption")}
-    locs = [str(x).replace(", United States", "") for x in (j.get("locations") or ([j["location"]] if j.get("location") else []))]
+    locs = [re.sub(r",?\s*\b(?:United States of America|United States|USA)\.?$", "", str(x).strip())
+            for x in (j.get("locations") or ([j["location"]] if j.get("location") else []))]
     d = {"title": j.get("name") or j.get("posting_name"), "company": domain.split(".")[0].replace("-", " ").title(),
          "location": "; ".join(locs[:3]) + (f" (+{len(locs) - 3} more)" if len(locs) > 3 else ""),
          "description": html_to_text(j.get("job_description") or ""), "source": "Eightfold"}
@@ -481,7 +508,75 @@ def from_google(url):
     return None
 
 
-SITE_HANDLERS = [from_google, from_bamboohr, from_oracle, from_greenhouse, from_lever, from_workday, from_ashby, from_smartrecruiters, from_eightfold, from_linkedin]
+def _apple_heading(key: str) -> str:
+    k = key.lower()
+    if "minimum" in k or "basic" in k or "required" in k:
+        return "Minimum Qualifications"
+    if "preferred" in k:
+        return "Preferred Qualifications"
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", key).strip().title()
+
+
+def from_apple(url):
+    """jobs.apple.com/.../details/<id>/...: the page's embedded job data holds sections the visible text drops,
+    notably 'Minimum Qualifications' (where Apple states years, e.g. '10+ years in the mold making industry')."""
+    u = urlparse(url)
+    if "jobs.apple.com" not in u.netloc or "/details/" not in u.path:
+        return None
+    r = get(url)
+    if r.status_code != 200:
+        return None
+    import watcher
+    job = None
+    for blob in watcher._json_blobs(r.text):
+        for o in watcher._walk(blob):
+            if isinstance(o, dict) and o.get("postingTitle") and any(
+                    re.search(r"qualif|responsib|summary|description", str(k), re.I) for k in o):
+                job = o
+                break
+        if job:
+            break
+    if not job:
+        return None
+    parts, pay = [], ""
+    order = sorted(job.items(), key=lambda kv: (0 if re.search(r"summary|description", kv[0], re.I) else
+                                                 1 if re.search(r"responsib", kv[0], re.I) else
+                                                 2 if re.search(r"minimum|basic|required", kv[0], re.I) else
+                                                 3 if re.search(r"preferred", kv[0], re.I) else 4))
+    for k, v in order:
+        if isinstance(v, list):
+            v = "\n".join(str(x) for x in v if isinstance(x, (str, int, float)))
+        if not isinstance(v, str) or len(v) < 20:
+            continue
+        if re.search(r"pay range|base pay", v, re.I):
+            pay += "\n" + html_to_text(v)
+        if re.search(r"qualif|responsib|summary|description|education|requirement", k, re.I):
+            parts.append(f"{_apple_heading(k)}:\n{html_to_text(v)}")
+    if not parts:
+        return None
+    # the pay sentence: in the job data, elsewhere in the page's data, or in the visible text
+    if not re.search(r"\$\s?\d", pay):
+        for blob in watcher._json_blobs(r.text):
+            for o in watcher._walk(blob):
+                if isinstance(o, str) and re.search(r"\$\s?\d", o) and re.search(r"pay|salary|compensation", o, re.I):
+                    pay += "\n" + html_to_text(o)
+                    break
+            if re.search(r"\$\s?\d", pay):
+                break
+    if not re.search(r"\$\s?\d", pay):
+        page = html_to_text(r.text)
+        for m in re.finditer(r"[^\n]{0,250}\$\s?\d[\d,]*(?:\.\d+)?[^\n]{0,250}", page):
+            if re.search(r"pay|salary|compensation", m.group(0), re.I):
+                pay += "\n" + m.group(0)
+                break
+    locs = job.get("locations") or []
+    loc = "; ".join(", ".join(x for x in ((l.get("city") or l.get("name")), l.get("stateProvince")) if x)
+                    for l in locs if isinstance(l, dict))
+    return {"title": job["postingTitle"], "company": "Apple", "location": loc,
+            "description": "\n\n".join(parts) + ("\n\n" + pay.strip() if pay.strip() else ""), "source": "Apple"}
+
+
+SITE_HANDLERS = [from_apple, from_google, from_bamboohr, from_oracle, from_greenhouse, from_lever, from_workday, from_ashby, from_smartrecruiters, from_eightfold, from_linkedin]
 
 
 # ------------------------------------------------------------------ generic page

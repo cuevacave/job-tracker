@@ -21,6 +21,7 @@ It's built for people who apply to a lot of jobs and are tired of copying titles
   - [Check Email](#check-email)
   - [Rescore Jobs](#rescore-jobs)
 - [The spreadsheet](#the-spreadsheet)
+- [Using a resume builder](#using-a-resume-builder)
 - [How the Priority score works](#how-the-priority-score-works)
 - [Adding a company](#adding-a-company)
 - [Starter packs](#starter-packs)
@@ -35,7 +36,7 @@ It's built for people who apply to a lot of jobs and are tired of copying titles
 
 | Tool | What it's for |
 |---|---|
-| **Add Job** | Paste a job link and it reads the posting: company, title, pay, location, remote/hybrid/on-site, office days per week, perks (bonus, 401k match, equity, relocation, PTO…), posted date and deadline. It asks whether you've applied and saves the job with a Priority score. |
+| **Add Job** | Paste a job link and it reads the posting: company, title, pay, location, remote/hybrid/on-site, office days per week, perks (bonus, 401k match, equity, relocation, PTO…), posted date and deadline. It saves the job on **To Apply** with a Priority score. |
 | **Check Jobs** | Watches the careers pages of companies you list and shows **new** postings that match your title keywords and locations. You pick which ones to add. |
 | **Check Email** | Reads your Gmail (read-only) and updates each application's status: received, interview, rejection, offer. It suggests follow-ups and marks jobs as Ghosted after a set time. |
 | **Rescore Jobs** | Re-rates every saved job after you change your settings (keywords, background, pay target…). |
@@ -92,12 +93,13 @@ Open **Job_Tracker.xlsx** and fill in the **yellow cells**. Most results depend 
 | Fit keywords: what you want to work on | `CAD, robotics, test, medical devices` |
 | My background: 3–8 lines about your degree, experience, tools and what you want (and don't want) | Used by the AI to rate fit |
 | My years of experience | 2 |
+| My highest degree | `Bachelor's`, `Master's` or `PhD`. Used when a posting asks "BS + 5 years or MS + 3 years" |
 | Dealbreaker words in the job title | `Senior, Director` |
 | Watch: title keywords, skip words and locations | For Check Jobs (see below) |
 
 The rest of Settings (points per perk, office-day scores, weights) has sensible defaults you can change later.
 
-**Areas tab.** It starts empty. List the metros you'd move to, from most to least preferred, each with a center city, a radius and extra points (e.g. `Boston metro | Boston, MA | 40 | 1`). A row with just a state code (e.g. `CO`) covers the whole state. Order matters: a job counts toward the first row it falls in.
+**Areas tab.** It starts empty. List the metros you'd move to, from most to least preferred, each with a center city, a radius, extra points and a **Tier** (1 = best; blank = 2), e.g. `Boston metro | Boston, MA | 40 | 1 | 2`. A row with just a state code (e.g. `CO`) covers the whole state. Order matters: a job counts toward the first row it falls in, so put a city above its state (`Denver metro` above `CO`). Home is always Tier 1, remote jobs Tier 3, anywhere else in the US Tier 4.
 
 **Watch: locations to include** starts as `Home, Area, Region, Remote, Elsewhere` (all of the US). Once your Home and Areas are set, remove `Elsewhere` to see only the places you'd consider.
 
@@ -115,22 +117,34 @@ Double-click any of these in your Job Tracker folder. If Excel has the tracker o
 2. Double-click **Add Job**. It offers the link you just copied, so press Enter, or paste a different one.
 3. Check what it found. Press **Enter** if it looks right, or type fixes, for example:
    `title=Mechanical Engineer   pay=80000-95000   location=Boston, MA   days=3   deadline=11/14`
-4. Answer **Applied already? (y/n)**. If yes, it asks which resume version you sent.
-5. The job is saved with its Priority score and a short fit note, and the posting is copied so you can paste it into your resume-tailoring tool.
+4. The job is saved with its Priority score and a short fit note, and the posting is copied so you can paste it into your resume-tailoring tool.
 
 **Notes:**
 - **Some sites (Apple, Motional and others) build pages with code the tool can't read.** If the details look wrong, open the posting in your browser, select all and copy (Cmd+A, Cmd+C), then type `c` at the review prompt.
 - **Pasting a link for a job you already have** offers `r` to re-read it, or `a` to mark it applied.
+- **When you apply,** set the job's **Status** to `Applied` (or **Applied?** to `Yes`) and it moves to the Applied tab on the next run. If you use a resume builder that writes `resume_log.csv`, it's done for you: see [Using a resume builder](#using-a-resume-builder).
 
 ### Check Jobs (the job watcher)
 
 Each row on the **Watchlist** tab is one company: its name and the link to its careers page or job board. Double-click **Check Jobs**:
 
 - **s** = scan for new jobs (quick, no AI)
-- **a** = add the jobs you marked **Add** on the **New Matches** tab (reads each one with the AI)
+- **a** = add the jobs you marked **Add** on the **New Matches** tab: no questions, a few seconds each, saved every 5 jobs
 - **b** = both
 
 A scan lists postings that are **new**, have one of your **title keywords**, contain none of your **skip words** or **senior-level words**, and are in a **location** you'd consider. Type the numbers of the ones you want to add, or review them later on the New Matches tab: set **Action = Add** to add one, or **Dismiss** to hide it.
+
+**Requirement check.** After the scan, Check Jobs reads the full description of each possible match (only those, several companies at once) and fills in the **Pay**, **Requirements** and **Filtered** columns on New Matches:
+
+- **Experience:** a posting whose *required* experience is **4 years or more** is filtered. Preferred lines and "Preferred" sections don't count, ranges use the low end (`3-5 years` = 3), and if the posting offers a shorter path for your degree (`BS + 5 or MS + 3`) that one is used.
+- **Degree field:** a posting whose degree line names **only** fields that aren't yours (by default CS, computer engineering, EE, software, IT) is filtered. If it also accepts engineering, a field of yours, "a related field", or ends an open list with "etc.", it's kept and labeled, e.g. `CS/EE-leaning`.
+- **Required skills:** phrases in **Watch: required-skill dealbreakers** (empty at first) filter a posting when they appear in a required line.
+- **Pay:** a posting that lists pay is filtered when the top of its range is below your **Minimum acceptable total pay** (hourly pay counts as × 2080). Postings without pay are never filtered for pay. Switch: **Watch: filter jobs whose top pay is below my minimum**.
+- **Filtered jobs** are shown **greyed** below the real matches, with the reason and the posting's own words, once each. When you trust the filter, set **Watch: show filtered jobs on New Matches** to `No`: they're left off and listed in `app/debug/skipped.csv` instead.
+- **Can't read a posting?** It's kept, marked `not checked`. Descriptions are remembered for 30 days, so re-scans are fast.
+- **Add Job** runs the same check and prints a heads-up; it never blocks you.
+
+All the lists are on Settings under **JOB WATCHER** (filter years, degree fields that count for you, fields that aren't, preferred-line words). Set the years to `0` to turn the experience filter off.
 
 **Watchlist columns:**
 
@@ -139,7 +153,8 @@ A scan lists postings that are **new**, have one of your **title keywords**, con
 | Careers link | The company's job board. See [Supported job sites](#supported-job-sites) |
 | Extra title keywords | Added to your main keyword list for this company. Start with `only:` to use **only** these, e.g. `only: structural, civil, facade` |
 | Active | `No` pauses the company |
-| Priority | 1, 2, 3… Check Jobs asks which priority to scan (Enter = 1). Put huge or slow companies at 2 or 3 and scan them on other days |
+| Priority | 1–6. Check Jobs asks which priority to scan (Enter = 1). Put huge or slow companies at 2 or 3 and scan them on other days |
+| Max Tier | 1–4: the farthest location tier you'd take **at this company** (see the Areas tab). Big companies with offices everywhere work well at `2`: jobs in other places are found but greyed. Blank = no limit |
 | My notes | Your own notes, e.g. "HQ Philadelphia, big in Boston" |
 | Where they post (auto) | Filled in each scan, e.g. "Boston metro 7 · Elsewhere 16" |
 | Last checked / Last result | When it was scanned and what happened ("290 postings scanned, 3 new matches") |
@@ -151,13 +166,38 @@ A scan lists postings that are **new**, have one of your **title keywords**, con
 - **Warnings:** Check Jobs warns you when a priority group hasn't been scanned in 10 days.
 - **Settings:** all of these numbers are under **JOB WATCHER**.
 
+**Recheck (r).** Re-runs your current settings (title words, experience, degree, skills, pay) on the New Matches rows you haven't added or dismissed. Rows that now fail are greyed with the reason; rows that now pass are un-greyed. Use it after changing skip words or filter settings. Nothing is added, dismissed or removed.
+
+**Deep scan (d).** Scans one company you name (even a paused one) for every open matching job, however old, instead of only recent ones. Use it after adding a big company, or to catch up on one. Jobs you've already been shown aren't repeated.
+
+**Am I missing jobs?** Every scan writes `app/debug/titles.csv`: every posting it read and why it was or wasn't shown (`MATCH`, `no title keyword`, `skip word: CPU`, `senior: Senior`, `location: …`, `older than this scan's 14 days`, `filtered: …`). Open it in Excel and sort by **Result**. Titles marked `no title keyword` that you'd want tell you which keywords to add; a skip word that catches good jobs tells you which to remove. Each scan also keeps the one before as `titles-previous.csv`, so you can compare two scans. Workday, Apple and Google list every job posted in your scan window; other keyword-search sites (Eightfold and others) only list jobs that matched your keyword searches. If a site cuts a scan short ("asked to slow down"), Check Jobs lists that company at the end under **Partly checked**: run it again later.
+
+**Adding the jobs you marked (a).** Each posting is read, scored and saved on To Apply without any questions (no AI, so it's quick; Rescore Jobs can use the AI later). If a posting doesn't list pay, the pay the scan read from the job list is used. At the end you get a summary: jobs added, jobs it couldn't read (usually taken down; they stay marked Add), and jobs without pay (also saved in `app/debug/no_pay.txt`).
+
+**New Matches columns:**
+
+| Column | What it means |
+|---|---|
+| Track | `Engineering` or `PM / Customer` (from **Track:** words on Settings) |
+| Role Type | Rotational / Early Career, Project / Product Mgmt, Applications & Field, Quality & Reliability, Test & Validation, Manufacturing & Process, Controls & Robotics, Systems & Integration, Design / R&D, or Other (from the **Role type:** rows on Settings, checked top to bottom) |
+| Tier | 1 = Home, an Areas row = its Tier, 3 = Region and remote, 4 = elsewhere in the US |
+| Years | Years of experience the posting requires for your degree. Blank = not stated. Filter it, e.g. 0–2 plus blanks |
+| Co. Priority | The company's Watchlist priority |
+| Same Job, Other Links | The same job posted more than once (same title, place and description): the copies are folded into one row and their links listed here |
+
+**Order:** jobs to decide (and ones marked Add) first, then greyed ones, then ones you've added or dismissed; within each group, newest posting first.
+
+**Keeping the list fresh.** Once a week after a scan (or any time with **x**), Check Jobs checks whether your saved jobs and undecided New Matches are still posted. It counts pages that stay up but say the job is gone ("this job no longer exists", "applications are closed"), and it asks sites built with code (Apple, Google, Eightfold, Oracle) whether the posting still exists. A job is marked **Expired** only after it looks closed on two different days; Applied jobs are never touched. A passed **deadline** never closes a job (many stay open until filled): it adds a reminder in **Next Action** instead. Expired and Skipped jobs untouched for 60 days move out of the workbook into `app/archive.csv`.
+
 **After the priority question,** it asks **"Just some areas this time?"**. Press Enter for all your locations, or type part of an area name to see only matches there (`boston`, `LA`). For several areas, separate them with commas: `NYC metro, New Jersey`.
 
 **Tips:**
+- **How big companies are searched:** on **Workday** sites, Check Jobs reads the company's whole board newest-first back to your scan window, then also runs all your keyword searches, so every recent matching title is found. **Apple and Google** are read the same way (their newest-first list, then your keyword searches). Other keyword-search sites (Eightfold, SuccessFactors, Phenom…) are searched with all your title keywords; Eightfold sites are read more slowly because they limit fast readers.
 - **Big companies** (thousands of postings) work best with a few specific keywords: `only: mechanical, design engineer`.
 - **Exact phrases:** quotes require the words together, in order. `"product engineer"` won't match "Product Deployment Engineer".
-- **Grow your skip words** from what you dismiss, e.g. `electrical, software, sales, HVAC`.
+- **Grow your skip words** from what you dismiss, e.g. `software, sales, HVAC`. Phrases work too and are safer than single words: `electrical engineer, electrical design` skips those titles but keeps "Electrical/Mechanical Engineer" and "Electro-Mechanical Engineer".
 - **Senior filter:** **Watch: senior-level title words** and **Watch: level words** are plain lists you can edit. At consulting firms, add `Associate` if it's a senior title there.
+- **Titles that contain a skip word:** a skip or senior word doesn't count when it's part of a title keyword you listed. With the keyword `associate product manager`, "Associate Product Manager" gets through even though `Manager` is a skip word; "Senior Associate Product Manager" is still skipped.
 
 ### Check Email
 
@@ -178,9 +218,9 @@ After changing your keywords, background, pay target or AI model, double-click *
 | Tab | What's on it |
 |---|---|
 | **To Apply** | Jobs you haven't applied to, best Priority first. Jobs closing within 3 days get a boost. |
-| **New Matches** | New postings from Check Jobs, waiting for you to Add or Dismiss. |
+| **New Matches** | New postings from Check Jobs, waiting for you to Add or Dismiss. Greyed rows were filtered (reason in the Filtered column). |
 | **Applied** | Applications in progress; anything needing action is at the top. |
-| **Closed** | Rejected, Ghosted, Withdrawn, Skipped and Declined. |
+| **Closed** | Rejected, Ghosted, Withdrawn, Skipped, Declined and Expired (posting taken down). |
 | **Needs Review / Activity Log** | From Check Email (see above). |
 | **Watchlist** | Companies for Check Jobs. |
 | **Settings / Areas** | Your preferences (see [First things to set](#first-things-to-set)). |
@@ -189,7 +229,15 @@ After changing your keywords, background, pay target or AI model, double-click *
 - **Jobs move between tabs on their own.** Change a job's **Status** or **Applied?** cell and it moves on the next run.
 - **Columns with a lighter header are formulas** (Priority, Days Since Posted, Days Left, Est. Total Comp, Perks), so don't type in them. Fix a detail cell instead, e.g. set 401k Match to 4%, and they update instantly.
 - **The [+] above the far-right columns** opens the scoring details: each perk, the four scores, the sentence each perk came from, and the full description.
-- **Backups:** the last 15 versions of the tracker are kept in `app/backups`.
+- **Backups:** the last 15 versions of the tracker and the last 10 versions of the program files are kept in `app/backups`; older ones are deleted.
+- **Company names** are tidied when a job is added: `1000 KLA Corporation` → `KLA`, and a job on a company's own job board gets your Watchlist name for it.
+
+## Using a resume builder
+
+The tracker and a separate resume tool can work together through two plain files, without ever editing the same file:
+
+- **`jobs.csv`** (next to the workbook, rewritten on every run): every live job with its ID, company, title, Track, Role Type, location, tier, pay, status, link, the full description, and a **Requirements** summary such as `Years: 3+; Degree: BS Mechanical/Aerospace (or related); Skills: GD&T, Creo; Citizenship: US`. Read it by column name.
+- **`resume_log.csv`** in a folder named **Resume Builder** next to your Job Tracker folder, written only by the resume tool. Columns: `Job ID, Resume Version, Base, File, Created, Submitted, Accomplishments`. On each run the tracker fills **Resume Version** on the matching job, and moves the job to **Applied** only when **Submitted** has a date (a resume being made is not an application). If a Job ID appears more than once, the newest row wins. The tracker never writes this file, and skips it if it isn't there.
 
 ## How the Priority score works
 
@@ -351,7 +399,7 @@ Updates never touch your tracker, Gmail logins, saved postings or AI model, and 
 
 1. Close Excel.
 2. Download the new version and unzip it.
-3. Open the new folder and double-click **Install Update**. The first time, right-click it and choose Open. When it asks, drag your existing Job Tracker folder into the window.
+3. Open **Terminal** (Applications > Utilities), type `bash ` (with a space), drag **Install Update.command** from the new folder into the Terminal window, and press Enter. (Double-clicking it usually fails with "Apple could not verify it is free of malware".) When it asks, drag your existing Job Tracker folder into the window.
 
 The version number is shown at the top of Check Jobs, Add Job, Check Email and Rescore Jobs.
 

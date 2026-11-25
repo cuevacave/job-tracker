@@ -5,6 +5,16 @@ import datetime as dt
 
 from openpyxl.formatting.rule import CellIsRule, FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+
+GRID = Border(*(Side(style="thin", color="FFD0D5DD"),) * 4)
+
+
+def _cf(color):
+    """A fill for conditional formatting. Excel reads a rule's fill color from the 'background' slot (some versions
+    from the other one), so set both; with only one, Excel can draw the rule as plain white."""
+    c = color if len(color) == 8 else "FF" + color  # fully opaque
+    return PatternFill(fill_type="solid", start_color=c, end_color=c)
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -15,12 +25,12 @@ from common import (COL, COLUMNS, GROUP_KEYS, H, JOB_TABS, KEYS, LEGACY_LABELS, 
 
 FONT = "Arial"
 BODY = Font(name=FONT, size=10)
-HDR_FILL = PatternFill("solid", fgColor="1F3A5F")
-CALC_HDR_FILL = PatternFill("solid", fgColor="3E5C82")
+HDR_FILL = _cf("1F3A5F")
+CALC_HDR_FILL = _cf("3E5C82")
 HDR_FONT = Font(name=FONT, bold=True, color="FFFFFF", size=10)
 THIN = Side(style="thin", color="D0D5DD")
-INPUT_FILL = PatternFill("solid", fgColor="FFF4CC")
-SECTION_FILL = PatternFill("solid", fgColor="E8EEF6")
+INPUT_FILL = _cf("FFF4CC")
+SECTION_FILL = _cf("E8EEF6")
 TAB_COLORS = {"To Apply": "2E7D32", "Applied": "1565C0", "Closed": "9E9E9E"}
 SLACK = 300  # rows below the data that keep dropdowns/colors for rows you type in by hand
 
@@ -116,21 +126,21 @@ def write_job_tab(wb, title, jobs, index, widths=None, group_hidden=True):
     st = L("status")
     for s, (bg, fg) in STATUS_COLORS.items():
         ws.conditional_formatting.add(f"{st}2:{st}{end}", CellIsRule(
-            operator="equal", formula=[f'"{s}"'], fill=PatternFill("solid", fgColor=bg), font=Font(color=fg, bold=True)))
+            operator="equal", formula=[f'"{s}"'], fill=_cf(bg), font=Font(color=fg, bold=True)))
     pr = L("priority")
     rng = f"{pr}2:{pr}{end}"
     for cond, color in ((f"{pr}2>=70", "D1FADF"), (f"AND({pr}2>=45,{pr}2<70)", "FEF7C3"), (f"{pr}2<45", "F2F4F7")):
         ws.conditional_formatting.add(rng, FormulaRule(formula=[f"AND(ISNUMBER({pr}2),{cond})"],
-                                                       fill=PatternFill("solid", fgColor=color)))
+                                                       fill=_cf(color)))
     dl = L("days_left")
     ws.conditional_formatting.add(f"{dl}2:{dl}{end}", FormulaRule(
-        formula=[f"AND(ISNUMBER({dl}2),{dl}2>=0,{dl}2<=3)"], fill=PatternFill("solid", fgColor="FEE4E2"),
+        formula=[f"AND(ISNUMBER({dl}2),{dl}2>=0,{dl}2<=3)"], fill=_cf("FEE4E2"),
         font=Font(color="B42318", bold=True)))
     ws.conditional_formatting.add(f"{dl}2:{dl}{end}", FormulaRule(
         formula=[f"AND(ISNUMBER({dl}2),{dl}2<0)"], font=Font(color="98A2B3", strike=True)))
     dp = L("days_posted")  # fresh postings green, a month or older grey
     ws.conditional_formatting.add(f"{dp}2:{dp}{end}", FormulaRule(
-        formula=[f"AND(ISNUMBER({dp}2),{dp}2<=7)"], fill=PatternFill("solid", fgColor="D1FADF"), font=Font(color="05603A")))
+        formula=[f"AND(ISNUMBER({dp}2),{dp}2<=7)"], fill=_cf("D1FADF"), font=Font(color="05603A")))
     ws.conditional_formatting.add(f"{dp}2:{dp}{end}", FormulaRule(
         formula=[f"AND(ISNUMBER({dp}2),{dp}2>=30)"], font=Font(color="98A2B3")))
     na = L("next_action")
@@ -267,10 +277,19 @@ def build_how_to(wb):
 def build_areas(wb):
     from common import AREA_DEFAULTS
     if "Areas" in wb.sheetnames:
+        ws = wb["Areas"]
+        if not ws.cell(1, 5).value:  # trackers from before Location Tier: add the Tier column (E)
+            h = ws.cell(1, 5, "Tier (1 = best)")
+            h.font, h.fill, h.alignment = ws.cell(1, 4).font.copy(), ws.cell(1, 4).fill.copy(), ws.cell(1, 4).alignment.copy()
+            ws.column_dimensions["E"].width = 12
+            for i in range(2, 31):
+                ws.cell(i, 5).fill = INPUT_FILL
+            ws.cell(8, 6, "Tier: 1 = most wanted. Home = 1; a row with no tier = 2; your region = 3; elsewhere = 4.").font = \
+                Font(name=FONT, size=9, italic=True, color="667085")
         return
     ws = wb.create_sheet("Areas")
-    _hdr(ws, ["Area name", "Center: \"City, ST\" (or a 2-letter state = whole state)", "Radius (miles)", "Extra points"],
-         [22, 40, 14, 12])
+    _hdr(ws, ["Area name", "Center: \"City, ST\" (or a 2-letter state = whole state)", "Radius (miles)", "Extra points",
+              "Tier (1 = best)"], [22, 40, 14, 12, 12])
     for i, (n, c, r, b) in enumerate(AREA_DEFAULTS, 2):
         for j, v in enumerate((n, c, r, b), 1):
             cell = ws.cell(i, j, v)
@@ -297,12 +316,15 @@ WATCH_DEFAULTS = [  # examples for a new tracker, paused (Active = No): turn on 
     ("AECOM", "https://careers.smartrecruiters.com/AECOM2", "", "No", "Example (civil): set Active = Yes to use"),
     ("KLA", "https://kla.wd1.myworkdayjobs.com/Search", "", "No", "Example (semiconductors): set Active = Yes to use"),
 ]
-WL_HEAD = ["Company", "Careers link", "Extra title keywords", "Active", "Priority", "My notes", "Where they post (auto)",
-           "System", "Last checked", "Last result", "Feed (auto)"]
-WL_KEYS = ["company", "url", "keywords", "active", "priority", "notes", "where", "system", "checked", "result", "feed"]
-WL_INPUTS = 6  # yellow columns you fill in
-NM_HEAD = ["Found", "Company", "Title", "Location", "Area", "Posted", "Days Ago", "Quick Fit", "Link", "Action", "Source", "Key"]
-NM_KEYS = ["found", "company", "title", "location", "area", "posted", "ago", "quick", "link", "action", "source", "key"]
+WL_HEAD = ["Company", "Careers link", "Extra title keywords", "Active", "Priority", "Max Tier", "My notes",
+           "Where they post (auto)", "System", "Last checked", "Last result", "Feed (auto)"]
+WL_KEYS = ["company", "url", "keywords", "active", "priority", "max_tier", "notes", "where", "system", "checked", "result",
+           "feed"]
+WL_INPUTS = 7  # yellow columns you fill in
+NM_HEAD = ["Found", "Company", "Title", "Track", "Role Type", "Location", "Area", "Tier", "Years", "Co. Priority", "Posted", "Days Ago", "Quick Fit", "Pay", "Requirements",
+           "Filtered", "Link", "Same Job, Other Links", "Action", "Source", "Key"]
+NM_KEYS = ["found", "company", "title", "track", "role_type", "location", "area", "loc_tier", "years", "co_priority", "posted", "ago", "quick", "pay", "requirements",
+           "filtered", "link", "copies", "action", "source", "key"]
 
 
 def read_watchlist(wb):
@@ -333,7 +355,7 @@ def write_watchlist(wb, rows):
     if idx is not None:
         wb.remove(wb["Watchlist"])
     ws = wb.create_sheet("Watchlist", idx)
-    _hdr(ws, WL_HEAD, [20, 46, 22, 8, 8, 28, 42, 15, 12, 64, 12])
+    _hdr(ws, WL_HEAD, [20, 46, 22, 8, 8, 8, 28, 42, 15, 12, 64, 12])
     for i, r in enumerate(rows, 2):
         for j, k in enumerate(WL_KEYS, 1):
             v = r.get(k)
@@ -353,21 +375,26 @@ def write_watchlist(wb, rows):
     d = DataValidation(type="list", formula1='"Yes,No"', allow_blank=True)
     d.add("D2:D500")
     ws.add_data_validation(d)
-    d2 = DataValidation(type="list", formula1='"1,2,3"', allow_blank=True)
+    d2 = DataValidation(type="list", formula1='"1,2,3,4,5,6"', allow_blank=True)
     d2.add("E2:E500")
     ws.add_data_validation(d2)
-    ws.column_dimensions["K"].hidden = True
+    d3 = DataValidation(type="list", formula1='"1,2,3,4"', allow_blank=True)
+    d3.add("F2:F500")
+    ws.add_data_validation(d3)
+    ws.column_dimensions["L"].hidden = True
     for k, t in enumerate(["Add a company: its name + the link to its careers/job-search page (yellow cells).",
-                           "Priority 1/2/3 (blank = 1): Check Jobs asks which priority to scan, so big or slow",
+                           "Priority 1-6 (blank = 1): Check Jobs asks which priority to scan, so big or slow",
                            "companies can be scanned on other days.",
                            "Extra title keywords are added to your main list for that company. Start them with",
                            "only:  (e.g.  only: mechanical, design engineer) to use just those for this company.",
                            "Where they post (auto): which of your areas the company's postings were in, last scan.",
                            "My notes is yours (e.g. 'HQ Philly, big in Boston'): it's kept on every scan.",
                            "Check Jobs can also scan just one area (e.g. Boston) and skip companies not posting there.",
-                           "Active = No pauses a company. Then double-click Check Jobs."]):
-        ws.cell(2 + k, 13, t).font = Font(name=FONT, size=9, italic=True, color="667085")
-    ws.column_dimensions["M"].width = 84
+                           "Active = No pauses a company. Then double-click Check Jobs.",
+                           "Max Tier (blank = no limit): only jobs whose Location Tier (Areas tab) is this or better,",
+                           "e.g. 2 for a company that posts everywhere. Outside it, postings are skipped before reading."]):
+        ws.cell(2 + k, 14, t).font = Font(name=FONT, size=9, italic=True, color="667085")
+    ws.column_dimensions["N"].width = 84
     return ws
 
 
@@ -397,20 +424,21 @@ def write_new_matches(wb, rows, n_new=0):
         wb.remove(wb["New Matches"])
     ws = wb.create_sheet("New Matches", idx)
     ws.sheet_properties.tabColor = "F79009"
-    _hdr(ws, NM_HEAD, [10, 18, 44, 26, 24, 10, 8, 9, 40, 10, 13, 6])
+    _hdr(ws, NM_HEAD, [10, 18, 44, 14, 18, 26, 24, 6, 7, 8, 10, 8, 9, 18, 30, 34, 40, 30, 10, 13, 6])
     col = {k: i + 1 for i, k in enumerate(NM_KEYS)}
     L = {k: gcl(i) for k, i in col.items()}
     ws.freeze_panes = "D2"
-    new_fill = PatternFill("solid", fgColor="FEF7C3")
+    new_fill = _cf("FEF7C3")
     for i, r in enumerate(rows, 2):
         for k, j in col.items():
             v = f'=IF(ISNUMBER({L["posted"]}{i}),MAX(0,TODAY()-{L["posted"]}{i}),"")' if k == "ago" else r.get(k)
             c = ws.cell(i, j, v)
+            c.border = GRID  # light lines on every cell, so highlighted rows keep their squares
             c.font = BODY
             if k in ("found", "posted"):
                 c.number_format = "m/d/yy"
-            if i - 2 < n_new and j <= 3:
-                c.fill = new_fill
+            if k in ("requirements", "filtered", "pay", "copies"):
+                c.alignment = Alignment(wrap_text=False, vertical="top")
         lc = ws.cell(i, col["link"])
         if isinstance(r.get("link"), str) and r["link"].startswith("http"):
             lc.hyperlink = r["link"]
@@ -424,11 +452,19 @@ def write_new_matches(wb, rows, n_new=0):
     ws.add_data_validation(d)
     ws.conditional_formatting.add(f"A2:{lastvis}{last + 300}", FormulaRule(
         formula=[f'OR(${act}2="Dismiss",${act}2="Added")'], font=Font(color="98A2B3")))
+    flt = L["filtered"]
+    # yellow = still to decide: not added, not dismissed, not filtered (updates by itself as you mark rows)
+    ws.conditional_formatting.add(f"A2:C{last + 300}", FormulaRule(
+        formula=[f'AND($C2<>"",${act}2="",${flt}2="")'], fill=new_fill))
+    # filtered by experience / degree / skill / pay: greyed (unless you mark it Add anyway)
+    ws.conditional_formatting.add(f"A2:{lastvis}{last + 300}", FormulaRule(
+        formula=[f'AND(${flt}2<>"",${act}2<>"Add")'], font=Font(color="98A2B3", italic=True),
+        fill=_cf("F2F4F7")))
     ws.conditional_formatting.add(f"{act}2:{act}{last + 300}", CellIsRule(operator="equal", formula=['"Add"'],
-                                  fill=PatternFill("solid", fgColor="D1FADF"), font=Font(color="05603A", bold=True)))
+                                  fill=_cf("D1FADF"), font=Font(color="05603A", bold=True)))
     ag = L["ago"]
     ws.conditional_formatting.add(f"{ag}2:{ag}{last + 300}", FormulaRule(
-        formula=[f"AND(ISNUMBER({ag}2),{ag}2<=7)"], fill=PatternFill("solid", fgColor="D1FADF"), font=Font(color="05603A")))
+        formula=[f"AND(ISNUMBER({ag}2),{ag}2<=7)"], fill=_cf("D1FADF"), font=Font(color="05603A")))
     return ws
 
 

@@ -8,6 +8,9 @@ if __name__ == "__main__":
         sys.exit(0)
     try:
         tr = Tracker()
+        for j in tr.jobs:  # tidy company names once ('1000 KLA Corporation' -> 'KLA', 'COV Covidien LP' -> 'Medtronic')
+            if j.get("company"):
+                j["company"] = tr.clean_company(j["company"], j.get("link"))
         counts = tr.save()
         print(f"  Tracker updated: To Apply {counts['To Apply']}, Applied {counts['Applied']}, Closed {counts['Closed']}.")
     except Exception as e:

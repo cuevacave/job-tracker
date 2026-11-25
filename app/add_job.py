@@ -282,9 +282,13 @@ def use_hint(d, hint):
     return d
 
 
-def add_one(tr, ai, url, hint=None):
+def add_one(tr, ai, url, hint=None, quick=False):
+    """Add one posting. quick=True (jobs marked Add on New Matches): no questions at all, no AI, no saving here
+    (the caller saves); returns 'added', 'exists' or 'unread'."""
     s = tr.s
     existing = tr.find_by_link(url)
+    if existing and quick:
+        return "exists"
     if existing:
         print(f"\n  Already tracked: #{existing['id']} {existing.get('title')} @ {existing.get('company')} "
               f"(status: {existing.get('status') or 'Saved'})")
@@ -304,17 +308,35 @@ def add_one(tr, ai, url, hint=None):
             print("  Updated. It's now on the Applied tab.")
         return
 
-    d = get_posting(url, ai)
-    if not d:
-        return
+    if quick:
+        try:
+            d = extract(url, ai)
+        except Exception:
+            d = None
+        if not d or not d.get("title") or len(d.get("description") or "") < 200:
+            return "unread"
+    else:
+        d = get_posting(url, ai)
+        if not d:
+            return
     d = use_hint(d, hint)
     if looks_like_code(d.get("title")):
-        d["title"] = None  # asked for below instead of saving junk
+        d["title"] = (hint or {}).get("title") if quick else None  # asked for below instead of saving junk
     job = {k: d.get(k) for k in POSTING_FIELDS}
-    review(job, d, url, ai, tr)
+    if quick:
+        if (hint or {}).get("company"):
+            job["company"] = hint["company"]
+        if not job.get("pay_min") and (hint or {}).get("pay"):  # the pay the scan already read from the listing
+            lo, hi, unit = parse_pay(str(hint["pay"]))
+            if lo:
+                job["pay_min"], job["pay_max"], job["pay_unit"] = lo, hi, unit
+        perks.enrich(job, ai)
+        tr.locate(job)
+    else:
+        review(job, d, url, ai, tr)
     # A row added earlier from a confirmation email (same company, no link yet)? Fill it in instead of duplicating.
     cname = re.sub(r"[^a-z0-9]", "", str(job.get("company") or "").lower())
-    for other in tr.jobs:
+    for other in ([] if quick else tr.jobs):
         oname = re.sub(r"[^a-z0-9]", "", str(other.get("company") or "").lower())
         if cname and oname and (cname in oname or oname in cname) and not other.get("link"):
             print(f"\n  You have #{other['id']} {other.get('title') or '(no title)'} @ {other.get('company')} "
@@ -338,7 +360,18 @@ def add_one(tr, ai, url, hint=None):
             print(f"  Note: you already have #{other['id']} with the same title at this company.")
             break
 
-    applied = ask_yn("\n  Applied already? (y/n): ")
+    try:  # heads-up only: the same experience / degree / skill checks Check Jobs uses
+        if quick:
+            raise StopIteration
+        import reqcheck
+        rc = reqcheck.check(job.get("description") or "", s)
+        if rc["filtered"]:
+            print(f"  Heads-up: Check Jobs would have filtered this one: {rc['filtered']}")
+        elif rc["requirements"] and not rc["requirements"].startswith("years not stated"):
+            print(f"  Requirements: {rc['requirements']}")
+    except (Exception, StopIteration):
+        pass
+    applied = False  # a job moves to Applied when the resume builder's log shows a Submitted date
     job.update({"id": tr.next_id(), "date_added": today(), "last_update": today()})
     if d.get("_ai_used"):
         job["notes"] = "Some details read by local AI; double-check."
@@ -354,6 +387,11 @@ def add_one(tr, ai, url, hint=None):
     if ai.enabled and s.get("background"):
         print(f" done ({time.time() - t0:.0f}s)")
     tr.add(job)
+    if quick:
+        write_posting_file(job, url)
+        pay = fmt_pay(job.get("pay_min"), job.get("pay_max"), job.get("pay_unit")) if job.get("pay_min") else "no pay listed"
+        print(f"  + #{job['id']} {str(job.get('company'))[:18]} - {str(job.get('title'))[:45]}  |  {pay}")
+        return "added"
     if not applied:
         p = scoring.priority(job, s)
         print(f"\n  PRIORITY: {p}/100   ({scoring.breakdown(job, s)})")

@@ -19,6 +19,9 @@ li { margin:.2em 0; }
 </style></head>
 <body>
 <h1 id="job-tracker">Job Tracker</h1>
+<blockquote>
+<p>Reading this on your Mac? Double-click <strong>README.html</strong> for an easier-to-read version.</p>
+</blockquote>
 <p>A free job-search tracker for Mac. It keeps everything in one Excel file, reads job postings for you, ranks them, watches your favorite companies for new openings and updates application statuses from Gmail.</p>
 <p>Job Tracker runs on your own Mac. Your jobs, emails and resume details stay on your computer. Nothing is sent to an AI company, and there is no account or subscription.</p>
 <p>It's built for people who apply to a lot of jobs and are tired of copying titles, pay and locations into a spreadsheet by hand. You paste a job link, and it fills in the company, title, pay, location, perks, office days, posted date and deadline. It then gives the job a <strong>Priority score (0–100)</strong> based on location, pay, how well the job fits you and its perks.</p>
@@ -37,6 +40,7 @@ li { margin:.2em 0; }
 </ul>
 </li>
 <li><a href="#the-spreadsheet">The spreadsheet</a></li>
+<li><a href="#using-a-resume-builder">Using a resume builder</a></li>
 <li><a href="#how-the-priority-score-works">How the Priority score works</a></li>
 <li><a href="#adding-a-company">Adding a company</a></li>
 <li><a href="#starter-packs">Starter packs</a></li>
@@ -58,7 +62,7 @@ li { margin:.2em 0; }
 <tbody>
 <tr>
 <td><strong>Add Job</strong></td>
-<td>Paste a job link and it reads the posting: company, title, pay, location, remote/hybrid/on-site, office days per week, perks (bonus, 401k match, equity, relocation, PTO…), posted date and deadline. It asks whether you've applied and saves the job with a Priority score.</td>
+<td>Paste a job link and it reads the posting: company, title, pay, location, remote/hybrid/on-site, office days per week, perks (bonus, 401k match, equity, relocation, PTO…), posted date and deadline. It saves the job on <strong>To Apply</strong> with a Priority score.</td>
 </tr>
 <tr>
 <td><strong>Check Jobs</strong></td>
@@ -147,6 +151,10 @@ li { margin:.2em 0; }
 <td>2</td>
 </tr>
 <tr>
+<td>My highest degree</td>
+<td><code>Bachelor's</code>, <code>Master's</code> or <code>PhD</code>. Used when a posting asks "BS + 5 years or MS + 3 years"</td>
+</tr>
+<tr>
 <td>Dealbreaker words in the job title</td>
 <td><code>Senior, Director</code></td>
 </tr>
@@ -157,7 +165,7 @@ li { margin:.2em 0; }
 </tbody>
 </table>
 <p>The rest of Settings (points per perk, office-day scores, weights) has sensible defaults you can change later.</p>
-<p><strong>Areas tab.</strong> It starts empty. List the metros you'd move to, from most to least preferred, each with a center city, a radius and extra points (e.g. <code>Boston metro | Boston, MA | 40 | 1</code>). A row with just a state code (e.g. <code>CO</code>) covers the whole state. Order matters: a job counts toward the first row it falls in.</p>
+<p><strong>Areas tab.</strong> It starts empty. List the metros you'd move to, from most to least preferred, each with a center city, a radius, extra points and a <strong>Tier</strong> (1 = best; blank = 2), e.g. <code>Boston metro | Boston, MA | 40 | 1 | 2</code>. A row with just a state code (e.g. <code>CO</code>) covers the whole state. Order matters: a job counts toward the first row it falls in, so put a city above its state (<code>Denver metro</code> above <code>CO</code>). Home is always Tier 1, remote jobs Tier 3, anywhere else in the US Tier 4.</p>
 <p><strong>Watch: locations to include</strong> starts as <code>Home, Area, Region, Remote, Elsewhere</code> (all of the US). Once your Home and Areas are set, remove <code>Elsewhere</code> to see only the places you'd consider.</p>
 <p><strong>Watchlist tab.</strong> It starts with five example companies from different fields, all paused (Active = No). Turn on the ones you want, delete the rest, and add your own: see <a href="#adding-a-company">Adding a company</a> and <a href="#starter-packs">Starter packs</a>.</p>
 <p><strong>Better AI fit scores:</strong> in Settings, change <strong>AI model</strong> to <code>qwen3:8b</code> if your Mac has 16 GB of memory or more, then run Setup again. It's slower, but noticeably better at judging fit.</p>
@@ -167,28 +175,35 @@ li { margin:.2em 0; }
 <ol>
 <li>Copy a job link (from LinkedIn, a company site, Indeed and so on).</li>
 <li>Double-click <strong>Add Job</strong>. It offers the link you just copied, so press Enter, or paste a different one.</li>
-<li>
-<p>Check what it found. Press <strong>Enter</strong> if it looks right, or type fixes, for example:
-   <code>title=Mechanical Engineer   pay=80000-95000   location=Boston, MA   days=3   deadline=11/14</code></p>
-</li>
-<li>
-<p>Answer <strong>Applied already? (y/n)</strong>. If yes, it asks which resume version you sent.</p>
-</li>
+<li>Check what it found. Press <strong>Enter</strong> if it looks right, or type fixes, for example:
+    <code>title=Mechanical Engineer   pay=80000-95000   location=Boston, MA   days=3   deadline=11/14</code></li>
 <li>The job is saved with its Priority score and a short fit note, and the posting is copied so you can paste it into your resume-tailoring tool.</li>
 </ol>
 <p><strong>Notes:</strong></p>
 <ul>
 <li><strong>Some sites (Apple, Motional and others) build pages with code the tool can't read.</strong> If the details look wrong, open the posting in your browser, select all and copy (Cmd+A, Cmd+C), then type <code>c</code> at the review prompt.</li>
 <li><strong>Pasting a link for a job you already have</strong> offers <code>r</code> to re-read it, or <code>a</code> to mark it applied.</li>
+<li><strong>When you apply,</strong> set the job's <strong>Status</strong> to <code>Applied</code> (or <strong>Applied?</strong> to <code>Yes</code>) and it moves to the Applied tab on the next run. If you use a resume builder that writes <code>resume_log.csv</code>, it's done for you: see <a href="#using-a-resume-builder">Using a resume builder</a>.</li>
 </ul>
 <h3 id="check-jobs-the-job-watcher">Check Jobs (the job watcher)</h3>
 <p>Each row on the <strong>Watchlist</strong> tab is one company: its name and the link to its careers page or job board. Double-click <strong>Check Jobs</strong>:</p>
 <ul>
 <li><strong>s</strong> = scan for new jobs (quick, no AI)</li>
-<li><strong>a</strong> = add the jobs you marked <strong>Add</strong> on the <strong>New Matches</strong> tab (reads each one with the AI)</li>
+<li><strong>a</strong> = add the jobs you marked <strong>Add</strong> on the <strong>New Matches</strong> tab: no questions, a few seconds each, saved every 5 jobs</li>
 <li><strong>b</strong> = both</li>
 </ul>
 <p>A scan lists postings that are <strong>new</strong>, have one of your <strong>title keywords</strong>, contain none of your <strong>skip words</strong> or <strong>senior-level words</strong>, and are in a <strong>location</strong> you'd consider. Type the numbers of the ones you want to add, or review them later on the New Matches tab: set <strong>Action = Add</strong> to add one, or <strong>Dismiss</strong> to hide it.</p>
+<p><strong>Requirement check.</strong> After the scan, Check Jobs reads the full description of each possible match (only those, several companies at once) and fills in the <strong>Pay</strong>, <strong>Requirements</strong> and <strong>Filtered</strong> columns on New Matches:</p>
+<ul>
+<li><strong>Experience:</strong> a posting whose <em>required</em> experience is <strong>4 years or more</strong> is filtered. Preferred lines and "Preferred" sections don't count, ranges use the low end (<code>3-5 years</code> = 3), and if the posting offers a shorter path for your degree (<code>BS + 5 or MS + 3</code>) that one is used.</li>
+<li><strong>Degree field:</strong> a posting whose degree line names <strong>only</strong> fields that aren't yours (by default CS, computer engineering, EE, software, IT) is filtered. If it also accepts engineering, a field of yours, "a related field", or ends an open list with "etc.", it's kept and labeled, e.g. <code>CS/EE-leaning</code>.</li>
+<li><strong>Required skills:</strong> phrases in <strong>Watch: required-skill dealbreakers</strong> (empty at first) filter a posting when they appear in a required line.</li>
+<li><strong>Pay:</strong> a posting that lists pay is filtered when the top of its range is below your <strong>Minimum acceptable total pay</strong> (hourly pay counts as × 2080). Postings without pay are never filtered for pay. Switch: <strong>Watch: filter jobs whose top pay is below my minimum</strong>.</li>
+<li><strong>Filtered jobs</strong> are shown <strong>greyed</strong> below the real matches, with the reason and the posting's own words, once each. When you trust the filter, set <strong>Watch: show filtered jobs on New Matches</strong> to <code>No</code>: they're left off and listed in <code>app/debug/skipped.csv</code> instead.</li>
+<li><strong>Can't read a posting?</strong> It's kept, marked <code>not checked</code>. Descriptions are remembered for 30 days, so re-scans are fast.</li>
+<li><strong>Add Job</strong> runs the same check and prints a heads-up; it never blocks you.</li>
+</ul>
+<p>All the lists are on Settings under <strong>JOB WATCHER</strong> (filter years, degree fields that count for you, fields that aren't, preferred-line words). Set the years to <code>0</code> to turn the experience filter off.</p>
 <p><strong>Watchlist columns:</strong></p>
 <table>
 <thead>
@@ -212,7 +227,11 @@ li { margin:.2em 0; }
 </tr>
 <tr>
 <td>Priority</td>
-<td>1, 2, 3… Check Jobs asks which priority to scan (Enter = 1). Put huge or slow companies at 2 or 3 and scan them on other days</td>
+<td>1–6. Check Jobs asks which priority to scan (Enter = 1). Put huge or slow companies at 2 or 3 and scan them on other days</td>
+</tr>
+<tr>
+<td>Max Tier</td>
+<td>1–4: the farthest location tier you'd take <strong>at this company</strong> (see the Areas tab). Big companies with offices everywhere work well at <code>2</code>: jobs in other places are found but greyed. Blank = no limit</td>
 </tr>
 <tr>
 <td>My notes</td>
@@ -236,13 +255,56 @@ li { margin:.2em 0; }
 <li><strong>Warnings:</strong> Check Jobs warns you when a priority group hasn't been scanned in 10 days.</li>
 <li><strong>Settings:</strong> all of these numbers are under <strong>JOB WATCHER</strong>.</li>
 </ul>
+<p><strong>Recheck (r).</strong> Re-runs your current settings (title words, experience, degree, skills, pay) on the New Matches rows you haven't added or dismissed. Rows that now fail are greyed with the reason; rows that now pass are un-greyed. Use it after changing skip words or filter settings. Nothing is added, dismissed or removed.</p>
+<p><strong>Deep scan (d).</strong> Scans one company you name (even a paused one) for every open matching job, however old, instead of only recent ones. Use it after adding a big company, or to catch up on one. Jobs you've already been shown aren't repeated.</p>
+<p><strong>Am I missing jobs?</strong> Every scan writes <code>app/debug/titles.csv</code>: every posting it read and why it was or wasn't shown (<code>MATCH</code>, <code>no title keyword</code>, <code>skip word: CPU</code>, <code>senior: Senior</code>, <code>location: …</code>, <code>older than this scan's 14 days</code>, <code>filtered: …</code>). Open it in Excel and sort by <strong>Result</strong>. Titles marked <code>no title keyword</code> that you'd want tell you which keywords to add; a skip word that catches good jobs tells you which to remove. Each scan also keeps the one before as <code>titles-previous.csv</code>, so you can compare two scans. Workday, Apple and Google list every job posted in your scan window; other keyword-search sites (Eightfold and others) only list jobs that matched your keyword searches. If a site cuts a scan short ("asked to slow down"), Check Jobs lists that company at the end under <strong>Partly checked</strong>: run it again later.</p>
+<p><strong>Adding the jobs you marked (a).</strong> Each posting is read, scored and saved on To Apply without any questions (no AI, so it's quick; Rescore Jobs can use the AI later). If a posting doesn't list pay, the pay the scan read from the job list is used. At the end you get a summary: jobs added, jobs it couldn't read (usually taken down; they stay marked Add), and jobs without pay (also saved in <code>app/debug/no_pay.txt</code>).</p>
+<p><strong>New Matches columns:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Track</td>
+<td><code>Engineering</code> or <code>PM / Customer</code> (from <strong>Track:</strong> words on Settings)</td>
+</tr>
+<tr>
+<td>Role Type</td>
+<td>Rotational / Early Career, Project / Product Mgmt, Applications &amp; Field, Quality &amp; Reliability, Test &amp; Validation, Manufacturing &amp; Process, Controls &amp; Robotics, Systems &amp; Integration, Design / R&amp;D, or Other (from the <strong>Role type:</strong> rows on Settings, checked top to bottom)</td>
+</tr>
+<tr>
+<td>Tier</td>
+<td>1 = Home, an Areas row = its Tier, 3 = Region and remote, 4 = elsewhere in the US</td>
+</tr>
+<tr>
+<td>Years</td>
+<td>Years of experience the posting requires for your degree. Blank = not stated. Filter it, e.g. 0–2 plus blanks</td>
+</tr>
+<tr>
+<td>Co. Priority</td>
+<td>The company's Watchlist priority</td>
+</tr>
+<tr>
+<td>Same Job, Other Links</td>
+<td>The same job posted more than once (same title, place and description): the copies are folded into one row and their links listed here</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Order:</strong> jobs to decide (and ones marked Add) first, then greyed ones, then ones you've added or dismissed; within each group, newest posting first.</p>
+<p><strong>Keeping the list fresh.</strong> Once a week after a scan (or any time with <strong>x</strong>), Check Jobs checks whether your saved jobs and undecided New Matches are still posted. It counts pages that stay up but say the job is gone ("this job no longer exists", "applications are closed"), and it asks sites built with code (Apple, Google, Eightfold, Oracle) whether the posting still exists. A job is marked <strong>Expired</strong> only after it looks closed on two different days; Applied jobs are never touched. A passed <strong>deadline</strong> never closes a job (many stay open until filled): it adds a reminder in <strong>Next Action</strong> instead. Expired and Skipped jobs untouched for 60 days move out of the workbook into <code>app/archive.csv</code>.</p>
 <p><strong>After the priority question,</strong> it asks <strong>"Just some areas this time?"</strong>. Press Enter for all your locations, or type part of an area name to see only matches there (<code>boston</code>, <code>LA</code>). For several areas, separate them with commas: <code>NYC metro, New Jersey</code>.</p>
 <p><strong>Tips:</strong></p>
 <ul>
+<li><strong>How big companies are searched:</strong> on <strong>Workday</strong> sites, Check Jobs reads the company's whole board newest-first back to your scan window, then also runs all your keyword searches, so every recent matching title is found. <strong>Apple and Google</strong> are read the same way (their newest-first list, then your keyword searches). Other keyword-search sites (Eightfold, SuccessFactors, Phenom…) are searched with all your title keywords; Eightfold sites are read more slowly because they limit fast readers.</li>
 <li><strong>Big companies</strong> (thousands of postings) work best with a few specific keywords: <code>only: mechanical, design engineer</code>.</li>
 <li><strong>Exact phrases:</strong> quotes require the words together, in order. <code>"product engineer"</code> won't match "Product Deployment Engineer".</li>
-<li><strong>Grow your skip words</strong> from what you dismiss, e.g. <code>electrical, software, sales, HVAC</code>.</li>
+<li><strong>Grow your skip words</strong> from what you dismiss, e.g. <code>software, sales, HVAC</code>. Phrases work too and are safer than single words: <code>electrical engineer, electrical design</code> skips those titles but keeps "Electrical/Mechanical Engineer" and "Electro-Mechanical Engineer".</li>
 <li><strong>Senior filter:</strong> <strong>Watch: senior-level title words</strong> and <strong>Watch: level words</strong> are plain lists you can edit. At consulting firms, add <code>Associate</code> if it's a senior title there.</li>
+<li><strong>Titles that contain a skip word:</strong> a skip or senior word doesn't count when it's part of a title keyword you listed. With the keyword <code>associate product manager</code>, "Associate Product Manager" gets through even though <code>Manager</code> is a skip word; "Senior Associate Product Manager" is still skipped.</li>
 </ul>
 <h3 id="check-email">Check Email</h3>
 <p>Double-click <strong>Check Email</strong>. It reads recent emails from the accounts you added in Setup and:</p>
@@ -270,7 +332,7 @@ li { margin:.2em 0; }
 </tr>
 <tr>
 <td><strong>New Matches</strong></td>
-<td>New postings from Check Jobs, waiting for you to Add or Dismiss.</td>
+<td>New postings from Check Jobs, waiting for you to Add or Dismiss. Greyed rows were filtered (reason in the Filtered column).</td>
 </tr>
 <tr>
 <td><strong>Applied</strong></td>
@@ -278,7 +340,7 @@ li { margin:.2em 0; }
 </tr>
 <tr>
 <td><strong>Closed</strong></td>
-<td>Rejected, Ghosted, Withdrawn, Skipped and Declined.</td>
+<td>Rejected, Ghosted, Withdrawn, Skipped, Declined and Expired (posting taken down).</td>
 </tr>
 <tr>
 <td><strong>Needs Review / Activity Log</strong></td>
@@ -299,7 +361,14 @@ li { margin:.2em 0; }
 <li><strong>Jobs move between tabs on their own.</strong> Change a job's <strong>Status</strong> or <strong>Applied?</strong> cell and it moves on the next run.</li>
 <li><strong>Columns with a lighter header are formulas</strong> (Priority, Days Since Posted, Days Left, Est. Total Comp, Perks), so don't type in them. Fix a detail cell instead, e.g. set 401k Match to 4%, and they update instantly.</li>
 <li><strong>The [+] above the far-right columns</strong> opens the scoring details: each perk, the four scores, the sentence each perk came from, and the full description.</li>
-<li><strong>Backups:</strong> the last 15 versions of the tracker are kept in <code>app/backups</code>.</li>
+<li><strong>Backups:</strong> the last 15 versions of the tracker and the last 10 versions of the program files are kept in <code>app/backups</code>; older ones are deleted.</li>
+<li><strong>Company names</strong> are tidied when a job is added: <code>1000 KLA Corporation</code> → <code>KLA</code>, and a job on a company's own job board gets your Watchlist name for it.</li>
+</ul>
+<h2 id="using-a-resume-builder">Using a resume builder</h2>
+<p>The tracker and a separate resume tool can work together through two plain files, without ever editing the same file:</p>
+<ul>
+<li><strong><code>jobs.csv</code></strong> (next to the workbook, rewritten on every run): every live job with its ID, company, title, Track, Role Type, location, tier, pay, status, link, the full description, and a <strong>Requirements</strong> summary such as <code>Years: 3+; Degree: BS Mechanical/Aerospace (or related); Skills: GD&amp;T, Creo; Citizenship: US</code>. Read it by column name.</li>
+<li><strong><code>resume_log.csv</code></strong> in a folder named <strong>Resume Builder</strong> next to your Job Tracker folder, written only by the resume tool. Columns: <code>Job ID, Resume Version, Base, File, Created, Submitted, Accomplishments</code>. On each run the tracker fills <strong>Resume Version</strong> on the matching job, and moves the job to <strong>Applied</strong> only when <strong>Submitted</strong> has a date (a resume being made is not an application). If a Job ID appears more than once, the newest row wins. The tracker never writes this file, and skips it if it isn't there.</li>
 </ul>
 <h2 id="how-the-priority-score-works">How the Priority score works</h2>
 <p>Priority (0–100) is a weighted average of four scores out of 10 each. The weights are on the Settings tab.</p>
@@ -632,7 +701,7 @@ li { margin:.2em 0; }
 <ol>
 <li>Close Excel.</li>
 <li>Download the new version and unzip it.</li>
-<li>Open the new folder and double-click <strong>Install Update</strong>. The first time, right-click it and choose Open. When it asks, drag your existing Job Tracker folder into the window.</li>
+<li>Open <strong>Terminal</strong> (Applications &gt; Utilities), type <code>bash</code> (with a space), drag <strong>Install Update.command</strong> from the new folder into the Terminal window, and press Enter. (Double-clicking it usually fails with "Apple could not verify it is free of malware".) When it asks, drag your existing Job Tracker folder into the window.</li>
 </ol>
 <p>The version number is shown at the top of Check Jobs, Add Job, Check Email and Rescore Jobs.</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
@@ -695,5 +764,5 @@ li { margin:.2em 0; }
 <p><strong>Suggest companies:</strong> good companies and links for the <a href="#starter-packs">starter packs</a> are welcome. Open an Issue, or edit <strong>companies.csv</strong>.</p>
 <p>Please don't post your tracker file, emails or app passwords in an issue.</p>
 <h2 id="license">License</h2>
-<p><a href="LICENSE" title="The LICENSE file in this folder">MIT</a> © Job Tracker contributors</p>
+<p><a href="LICENSE">MIT</a> © Job Tracker contributors</p>
 </body></html>

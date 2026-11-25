@@ -18,10 +18,11 @@ import openpyxl  # noqa: E402
 import requests  # noqa: E402
 from openpyxl.utils import get_column_letter  # noqa: E402
 
-APP_VERSION = "23"
+APP_VERSION = "27"
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
 WB_PATH = ROOT / "Job_Tracker.xlsx"
+RESUME_LOG = ROOT.parent / "Resume Builder" / "resume_log.csv"  # written only by the resume builder; read here
 STATE_PATH = APP_DIR / "state.json"
 ACCOUNTS_PATH = APP_DIR / "accounts.json"
 BACKUP_DIR = APP_DIR / "backups"
@@ -35,12 +36,17 @@ COLUMNS = [
     ("priority", "Priority", 8, "calc"),
     ("company", "Company", 22, "in"),
     ("title", "Title", 30, "in"),
+    ("track", "Track", 14, "in"),
+    ("role_type", "Role Type", 16, "in"),
     ("posted", "Posted", 9, "in"),
     ("days_posted", "Days Since Posted", 8, "calc"),
     ("deadline", "Deadline", 9, "in"),
     ("days_left", "Days Left", 7, "calc"),
     ("location", "Location", 20, "in"),
     ("area", "Area", 22, "in"),
+    ("loc_tier", "Location Tier", 8, "in"),
+    ("co_priority", "Co. Priority", 8, "in"),
+    ("years_req", "Years Asked", 8, "in"),
     ("work_mode", "Work Mode", 10, "in"),
     ("office_days", "Office Days/Wk", 8, "in"),
     ("pay_min", "Pay Min", 10, "in"),
@@ -104,10 +110,11 @@ def L(key: str) -> str:
 JOB_TABS = ["To Apply", "Applied", "Closed"]
 TABLE_NAMES = {"To Apply": "tblToApply", "Applied": "tblApplied", "Closed": "tblClosed"}
 STATUSES = ["Saved", "Applied", "Screening", "Assessment", "Interview", "Offer",
-            "Rejected", "Withdrawn", "Ghosted", "Skipped", "Declined"]
-CLOSED = {"Rejected", "Withdrawn", "Ghosted", "Skipped", "Declined"}
+            "Rejected", "Withdrawn", "Ghosted", "Skipped", "Declined", "Expired"]
+CLOSED = {"Rejected", "Withdrawn", "Ghosted", "Skipped", "Declined", "Expired"}
 STATUS_RANK = {"": 0, "Saved": 0, "Skipped": 0.5, "Applied": 1, "Ghosted": 1, "Screening": 2,
-               "Assessment": 3, "Interview": 4, "Rejected": 5, "Withdrawn": 5, "Offer": 6, "Declined": 7}
+               "Assessment": 3, "Interview": 4, "Rejected": 5, "Withdrawn": 5, "Offer": 6, "Declined": 7,
+               "Expired": 0.5}
 
 
 def status_rank(s) -> float:
@@ -157,6 +164,8 @@ SETTINGS = [
     ("fit_keywords", "Fit keywords", "", "Specific skills/tools/domains, comma-separated; phrases work (e.g. mechanical design, "
      "SolidWorks, medical device). Title matches count most; benefits/legal text is ignored. 6-15 specific terms beat generic words.", True, None),
     ("my_years", "My years of experience", 2, "Count internships/co-ops. Used to check each posting's 'X+ years required'.", True, None),
+    ("my_degree", "My highest degree", "Bachelor's", "Bachelor's, Master's or PhD. When a posting offers a shorter "
+     "experience requirement for a higher degree ('BS + 5 years or MS + 3 years'), yours is used.", True, None),
     ("dealbreakers", "Dealbreaker words in the job TITLE", "", "Checked against the title only, e.g. Senior, Sr, Staff, Principal, Director, Manager", True, None),
     ("deal_phrases", "Dealbreaker phrases anywhere in the posting", "", "e.g. active security clearance, 100% travel. Leave blank if none.", True, None),
     ("background", "My background (for AI fit)", "", "2-4 sentences: degree, years of experience, strongest skills, roles you want. "
@@ -177,13 +186,76 @@ SETTINGS = [
      "manager, director", "Your title dealbreakers are skipped too.", True, None),
     ("watch_skip_senior", "Watch: skip senior-level titles", "Yes", "Yes/No. On = titles with any word from the two lists "
      "below are skipped by Check Jobs, and score low on fit.", False, None),
-    ("watch_senior_words", "Watch: senior-level title words", "Senior, Sr, Snr, Staff, Principal, Prin, Princ, Lead, Leader, "
+    ("watch_senior_words", "Watch: senior-level title words", "Senior, Sr, Snr, Staff, Principal, Prin, Princ, Lead, Leader, Supervisor, "
      "Manager, Mgr, Director, Dir, Head of, Chief, Vice President, VP, SVP, EVP, Distinguished, Fellow",
      "Edit freely. Plurals are matched too ('Lead' also matches 'Leads', not 'Leader').", True, None),
     ("watch_level_words", "Watch: level words (skipped)", "III, IV, V, VI, 3, 4, 5, 6, 7, 8, 9, Level 3, Level 4, Level 5, "
      "Grade 5, P4, P5, P6, L4, L5, L6, E4, E5, E6",
      "Matched as separate words ('Engineer III', 'Engineer 3', 'Level 4'); never inside other words ('V&V', '3D'). A range "
      "that starts below these levels stays in ('Engineer II/III' is kept, 'Engineer III/IV' is skipped).", True, None),
+    ("watch_max_years", "Watch: filter postings that require at least (years)", 4,
+     "Check Jobs reads the description of each posting that passes your title and location filters. A posting whose "
+     "REQUIRED experience (preferred lines ignored, ranges use the low end, your degree's option used) is this many "
+     "years or more is filtered. 0 = off.", False, None),
+    ("watch_show_filtered", "Watch: show filtered jobs on New Matches", "Yes",
+     "Yes = filtered jobs still appear on New Matches, greyed and below the real matches, with the reason in the "
+     "Filtered column (each appears once). No = left off; they're listed in app/debug/skipped.csv instead.", False, None),
+    ("watch_pref_words", "Watch: words marking a preferred (not required) line", "preferred, nice to have, nice-to-have, "
+     "bonus, a plus, desired, desirable, ideally, ideal candidate",
+     "Lines (or sections under a heading) with these words don't count as requirements.", True, None),
+    ("watch_my_fields", "Watch: degree fields that count for me", "engineering, mechanical, MechE, ME, BSME, MSME, civil, "
+     "structural, aerospace, mechatronics, robotics, manufacturing, industrial, materials, biomedical, chemical, physics, "
+     "mathematics, math, quantitative field, technical field, technical degree, technical discipline, STEM",
+     "If a posting's degree line accepts any of these (or a general one like 'engineering'), it's kept. Lowercase words "
+     "match any case; words with capitals (MechE) match exactly.", True, None),
+    ("watch_other_fields", "Watch: degree fields that aren't mine", "computer science and engineering, electrical and "
+     "computer engineering, computer science, computer engineering, software engineering, electrical engineering, "
+     "information systems, information technology, computer information systems, CSE, ECE, CompE, CS, EE, CIS, MIS",
+     "A posting whose degree line names ONLY these is filtered ('degree: CS only'). With 'or related field' it's kept "
+     "and labeled CS/EE-leaning. Short forms in capitals (CS, EE) match only in capitals.", True, None),
+    ("watch_pay_filter", "Watch: filter jobs whose top pay is below my minimum", "Yes",
+     "Yes = a posting that lists pay, whose TOP of range is below 'Minimum acceptable total pay', is filtered "
+     "(hourly pay counts as x 2080). Postings without pay are never filtered for pay.", False, None),
+    ("watch_pay_ceiling", "Watch: grey jobs whose pay STARTS at or above", "",
+     "A posting whose pay range STARTS at or above this (e.g. 160000) is usually a senior level, even when its title "
+     "and years don't say so (Apple, Teradyne). Those are greyed as 'pay: starts at ...'. Blank = off.", True, None),
+    ("track_other", "Track: titles that count as PM / Customer-facing",
+     "applications engineer, application engineer, field applications, field service, field engineer, sales engineer, "
+     "solutions engineer, customer engineer, customer success, technical support, product support, project manager, "
+     "product manager, program manager, product owner, technical program, project coordinator, program coordinator, "
+     "consultant, business analyst",
+     "Jobs whose title contains one of these get Track = PM / Customer; every other job is Engineering. Shown on New "
+     "Matches and your job tabs (you can type over it). For a resume builder or for sorting.", True, None),
+    ("role_early", "Role type: Rotational / Early Career", "rotational, rotation program, early career, development program, new grad, capstone, leadership program",
+     "Titles with one of these words get Role Type = Rotational / Early Career (checked first). Role types are checked top "
+     "to bottom; the first that matches wins (anything else = Other).", True, None),
+    ("role_pm", "Role type: Project / Product Mgmt", "project manager, product manager, program manager, product owner, technical program, project coordinator, program coordinator, project engineer",
+     "Titles with one of these words get Role Type = Project / Product Mgmt. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other).", True, None),
+    ("role_apps", "Role type: Applications & Field", "applications engineer, application engineer, field service, field applications, field engineer, service engineer, customer engineer, sales engineer, solutions engineer, technical support, product support, support engineer, install engineer, installation engineer, applications",
+     "Titles with one of these words get Role Type = Applications & Field. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other).", True, None),
+    ("role_quality", "Role type: Quality & Reliability", "quality, reliability, design assurance, compliance, CAPA, regulatory",
+     "Titles with one of these words get Role Type = Quality & Reliability. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other).", True, None),
+    ("role_test", "Role type: Test & Validation", "test, validation, verification, V&V",
+     "Titles with one of these words get Role Type = Test & Validation. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other).", True, None),
+    ("role_mfg", "Role type: Manufacturing & Process", "manufacturing, process, NPI, production, industrialization, tooling, assembly, packaging, operations engineer, supply chain, procurement, sourcing, plant",
+     "Titles with one of these words get Role Type = Manufacturing & Process. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other).", True, None),
+    ("role_controls", "Role type: Controls & Robotics", "controls, control systems, automation, robotics, mechatronics, autonomy, GNC, guidance",
+     "Titles with one of these words get Role Type = Controls & Robotics. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other).", True, None),
+    ("role_systems", "Role type: Systems & Integration", "systems engineer, system engineer, systems, integration",
+     "Titles with one of these words get Role Type = Systems & Integration. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other).", True, None),
+    ("role_design", "Role type: Design / R&D", "design, R&D, research, development, mechanical, product engineer, hardware, propulsion, thermal, structural, analyst, optical, optics, opto, sustaining",
+     "Titles with one of these words get Role Type = Design / R&D. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other).", True, None),
+    ("watch_skill_dealbreakers", "Watch: required-skill dealbreakers", "",
+     "Phrases that filter a posting when they appear in a REQUIRED line, e.g. production code, React. Blank = off.",
+     True, None),
     ("watch_areas", "Watch: locations to include", "Home, Area, Region, Remote, Elsewhere", "Any of: Home, Area, Region, Remote, "
      "Elsewhere (rest of the US), Outside US. Every match is labeled in the Area column. Postings with unclear "
      "locations are always shown.", False, None),
@@ -235,14 +307,30 @@ def split_list(v) -> list:
     return [x.strip() for x in str(v or "").split(",") if x.strip()]
 
 
+# Earlier default values that a newer version improved: a cell still holding the old default gets the new one.
+OLD_DEFAULTS = {
+    "watch_senior_words": ["Senior, Sr, Snr, Staff, Principal, Prin, Princ, Lead, Leader, Manager, Mgr, Director, Dir, "
+                           "Head of, Chief, Vice President, VP, SVP, EVP, Distinguished, Fellow"],
+    "watch_my_fields": ["engineering, mechanical, MechE, BSME, MSME, civil, structural, aerospace, mechatronics, robotics, "
+                        "manufacturing, industrial, materials, biomedical, chemical, physics, mathematics, math, "
+                        "quantitative field, technical field, technical degree, technical discipline, STEM"],
+}
+
+
 def read_settings(wb) -> dict:
     vals = {}
     if "Settings" in wb.sheetnames:
-        for row in wb["Settings"].iter_rows(min_row=1, max_col=2, values_only=True):
-            lab = str(row[0] or "").strip() if row else ""
+        defaults = {k: d for k, _, d, _, _, _ in SETTINGS}
+        for row in wb["Settings"].iter_rows(min_row=1, max_col=2):
+            if len(row) < 2:
+                continue
+            lab = str(row[0].value or "").strip()
             key = SETTING_LABELS.get(lab) or LEGACY_LABELS.get(lab)
+            if key in OLD_DEFAULTS and isinstance(row[1].value, str) and \
+                    " ".join(row[1].value.split()) in OLD_DEFAULTS[key]:
+                row[1].value = defaults[key]  # still the old default: use the improved one
             if key and (key not in vals or vals[key] in (None, "")):
-                vals[key] = row[1]
+                vals[key] = row[1].value
     out = {}
     for key, _, default, _, _, _ in SETTINGS:
         if key == H:
@@ -254,6 +342,8 @@ def read_settings(wb) -> dict:
     return out
 
 
+ROLE_TYPES = [("role_early", "Rotational / Early Career"), ("role_pm", "Project / Product Mgmt"), ("role_apps", "Applications & Field"), ("role_quality", "Quality & Reliability"), ("role_test", "Test & Validation"), ("role_mfg", "Manufacturing & Process"), ("role_controls", "Controls & Robotics"), ("role_systems", "Systems & Integration"), ("role_design", "Design / R&D")]
+TIER_REMOTE = 3   # Location Tier for remote jobs; Home = 1, an Areas row = its Tier (blank = 2), Region = 3, Elsewhere = 4
 AREA_DEFAULTS = []  # name, center ("City, ST" or a 2-letter state = whole state), radius miles, extra points. A new
 #                    tracker starts with none: you add the metros you'd move to on the Areas tab.
 
@@ -262,10 +352,12 @@ def read_areas(wb) -> list:
     if "Areas" not in wb.sheetnames:
         return [{"name": n, "center": c, "radius": r, "bonus": b} for n, c, r, b in AREA_DEFAULTS]
     out = []
-    for row in wb["Areas"].iter_rows(min_row=2, max_col=4, values_only=True):
+    for row in wb["Areas"].iter_rows(min_row=2, max_col=5, values_only=True):
         if row and row[1]:
+            tier = row[4] if len(row) > 4 else None
             out.append({"name": str(row[0] or row[1]).strip(), "center": str(row[1]).strip(),
-                        "radius": num(row[2], 35) if row[2] not in (None, "") else None, "bonus": num(row[3], 0)})
+                        "radius": num(row[2], 35) if row[2] not in (None, "") else None, "bonus": num(row[3], 0),
+                        "tier": int(num(tier, 2)) if tier not in (None, "") else None})
     return out
 
 
@@ -357,8 +449,140 @@ class Tracker:
         if job.get("geo_key") == key:
             return
         res = geo.classify(loc, self.geo_cfg) if loc else {"area": None, "area_type": None, "miles": None, "area_bonus": None}
+        res = dict(res)
+        tier = res.pop("tier", None)
+        if tier is None and (re.search(r"\bremote\b", loc, re.I) or str(job.get("work_mode") or "").lower() == "remote"):
+            tier = TIER_REMOTE
+        res["loc_tier"] = tier
         job.update(res)
         job["geo_key"] = key
+
+    SHARED_HOSTS = ("greenhouse.io", "lever.co", "ashbyhq.com", "smartrecruiters.com", "bamboohr.com", "breezy.hr",
+                    "rippling.com", "paylocity.com", "myworkdaysite.com", "icims.com")
+
+    @staticmethod
+    def _site_key(url):
+        """Which careers site a link belongs to: 'medtronic.wd1.myworkdayjobs.com', 'greenhouse.io/motional'..."""
+        from urllib.parse import urlparse
+        u = urlparse(str(url or ""))
+        host = u.netloc.lower().removeprefix("www.")
+        parts = [p for p in u.path.split("/") if p]
+        if any(h in host for h in Tracker.SHARED_HOSTS):
+            if "myworkdaysite.com" in host and "recruiting" in parts:
+                i = parts.index("recruiting")
+                return f"{host}/{parts[i + 1].lower()}" if len(parts) > i + 1 else host
+            return f"{host.split('.', host.count('.') - 1)[-1]}/{parts[0].lower()}" if parts else host
+        return host
+
+    @staticmethod
+    def _norm_name(n):
+        n = re.sub(r"\s*\(.*?\)", "", str(n or "")).lower().replace("&", " and ").replace("+", " and ")
+        return " ".join(re.findall(r"[a-z0-9]+", n))
+
+    LEGAL_SUFFIX = re.compile(r"(?:,?\s+|,)(?:inc\.?|incorporated|llc|l\.l\.c\.|lp|l\.p\.|ltd\.?|limited|corp\.?|"
+                              r"corporation|plc|gmbh|legal entity|products inc\.?)\s*$", re.I)
+
+    @staticmethod
+    def _feed_host(w):
+        """The job-board host saved in a Watchlist row's Feed (auto) cell, only if that cache belongs to the row's
+        current link (a stale cache left over from another company is ignored, as the scan does)."""
+        try:
+            f = json.loads(w.get("feed") or "null") or {}
+        except ValueError:
+            return None
+        if str(f.get("url") or "").strip() != str(w.get("url") or "").strip():
+            return None
+        return (f.get("params") or {}).get("host")
+
+    def watchlist_name(self, company, link=None):
+        """Your Watchlist's name for a job's company: by its link's careers site first, then by name."""
+        if not hasattr(self, "_wl_names"):
+            import sheets
+            self._wl_names, self._wl_site_names = [], {}
+            for w in sheets.read_watchlist(self.wb) if "Watchlist" in self.wb.sheetnames else []:
+                disp = str(w.get("company") or "").strip()
+                if not disp:
+                    continue
+                self._wl_names.append((self._norm_name(disp), disp))
+                if w.get("url"):
+                    self._wl_site_names.setdefault(self._site_key(w["url"]), disp)
+                host = self._feed_host(w)
+                if host:
+                    self._wl_site_names.setdefault(self._site_key("https://" + host + "/"), disp)
+        c = str(company or "").strip(" |")
+        for _ in range(3):
+            c = self.LEGAL_SUFFIX.sub("", c).strip(" ,")
+        c = self._norm_name(re.sub(r"^\d{3,5}\s*[-–]?\s*", "", c))
+        for name, disp in self._wl_names:  # the same company, spelled differently ('Johnson&Johnson')
+            if c and name == c:
+                return disp
+        if link:
+            k = self._site_key(link)
+            if k in self._wl_site_names:
+                site = self._wl_site_names[k]
+                # 'Hitachi Global' on the Hitachi Rail site stays itself; 'COV Covidien LP' on Medtronic's -> Medtronic
+                sn = self._norm_name(site)
+                if c and sn.split()[0] == c.split()[0] and not c.startswith(sn):
+                    return None
+                return site
+        for name, disp in sorted(self._wl_names, key=lambda x: -len(x[0])):
+            if name and re.search(r"(?<![a-z0-9])" + re.escape(name) + r"(?![a-z0-9])", c):
+                return disp
+        return None
+
+    def clean_company(self, company, link=None):
+        """'1000 KLA Corporation' -> 'KLA', 'COV Covidien LP' (a Medtronic Workday link) -> 'Medtronic',
+        '6149-DePuy Synthes Products Inc. Legal Entity' -> 'DePuy Synthes' (or your Watchlist name for it)."""
+        raw = str(company or "").strip()
+        wl = self.watchlist_name(raw, link)
+        if wl:
+            return wl
+        n = raw.strip(" |")
+        if not n:
+            return company
+        if not re.search(r"[a-z]", n) and re.search(r"\d", n):  # 'NY02-LATHAM-US9L': a site code, not a name
+            return company
+        had_suffix = bool(self.LEGAL_SUFFIX.search(n))
+        n = re.sub(r"^\d{3,5}\s*[-–]?\s*", "", n)                      # '1000 KLA Corporation', '6149-DePuy'
+        n = re.sub(r"^(?:USA|US|United States)\s*[-–]\s*", "", n, flags=re.I)  # 'USA - Smith & Nephew, Inc.'
+        for _ in range(3):
+            n = self.LEGAL_SUFFIX.sub("", n).strip(" ,")
+        n = re.sub(r"\s+Products$", "", n) if had_suffix else n
+        if had_suffix:
+            n = re.sub(r"^[A-Z]{2,4}\s+(?=[A-Z][a-z])", "", n)              # 'COV Covidien' -> 'Covidien'
+        n = re.sub(r"\s{2,}", " ", n).strip(" ,|-")
+        return n or company
+
+    def company_priority(self, company, link=None):
+        """Your Watchlist priority (1-6) for a job: by its link's careers site first (Workday lists Medtronic jobs
+        under 'COV Covidien LP'), then by name ('KLA' in '1000 KLA Corporation', 'Smith & Nephew' = 'Smith+Nephew')."""
+        if not hasattr(self, "_wl_prio"):
+            import sheets
+            self._wl_prio, self._wl_sites = [], {}
+            for w in sheets.read_watchlist(self.wb) if "Watchlist" in self.wb.sheetnames else []:
+                pr = w.get("priority")
+                if pr in (None, ""):
+                    continue
+                name = self._norm_name(w.get("company"))
+                if name:
+                    self._wl_prio.append((name, pr))
+                if w.get("url"):
+                    self._wl_sites.setdefault(self._site_key(w["url"]), pr)
+                host = self._feed_host(w)  # the job board behind a branded careers page (jobs.abbott -> abbott.wd5...)
+                if host:
+                    self._wl_sites.setdefault(self._site_key("https://" + host + "/"), pr)
+        if link:
+            k = self._site_key(link)
+            if k in self._wl_sites:
+                return self._wl_sites[k]
+        c = self._norm_name(company)
+        for name, pr in sorted(self._wl_prio, key=lambda x: -len(x[0])):
+            if re.search(r"(?<![a-z0-9])" + re.escape(name) + r"(?![a-z0-9])", c):
+                return pr
+        for name, pr in self._wl_prio:  # 'Aurora' for 'Aurora Innovation'
+            if c and len(c) >= 4 and " " not in c and name.split()[0] == c:
+                return pr
+        return None
 
     def next_id(self) -> int:
         return int(max([num(j.get("id"), 0) for j in self.jobs] + [0])) + 1
@@ -371,17 +595,92 @@ class Tracker:
         return None
 
     def add(self, job: dict) -> dict:
+        if job.get("company"):
+            job["company"] = self.clean_company(job["company"], job.get("link"))
         job.setdefault("id", self.next_id())
         job.setdefault("date_added", today())
         self.jobs.append(job)
         return job
 
+    def import_resume_log(self, verbose=True) -> int:
+        """Read ../Resume Builder/resume_log.csv (if it's there) and, matching by Job ID: fill Resume Version, and move
+        a job to Applied only when its Submitted column has a date (a resume being made is not an application).
+        The newest row per Job ID wins. This file is never written by the tracker."""
+        import csv
+        if not RESUME_LOG.exists():
+            return 0
+
+        def d(v):
+            v = str(v or "").strip()[:10]
+            try:
+                return dt.date.fromisoformat(v)
+            except ValueError:
+                return None
+        try:
+            with open(RESUME_LOG, newline="", encoding="utf-8-sig") as f:
+                rows = list(csv.DictReader(f))
+        except (OSError, csv.Error, UnicodeDecodeError):
+            return 0
+        latest = {}
+        for i, r in enumerate(rows):
+            r = {str(k or "").strip().lower(): v for k, v in r.items()}
+            jid = str(r.get("job id") or "").strip().split(".")[0]
+            if not jid.isdigit():
+                continue
+            key = (d(r.get("created")) or dt.date.min, i)
+            if jid not in latest or key >= latest[jid][0]:
+                latest[jid] = (key, r)
+        by_id = {}
+        for j in self.jobs:
+            try:
+                by_id[str(int(float(j.get("id"))))] = j
+            except (TypeError, ValueError):
+                pass
+        n = 0
+        for jid, (_, r) in latest.items():
+            j = by_id.get(jid)
+            if j is None:
+                continue
+            ver = str(r.get("resume version") or "").strip()
+            if ver and j.get("resume") != ver:
+                j["resume"] = ver
+                if str(j.get("next_action") or "") == "Add resume version":
+                    j["next_action"] = None
+                n += 1
+            sub = d(r.get("submitted"))
+            if sub and j.get("applied") != "Yes":
+                j["applied"], j["date_applied"], j["last_update"] = "Yes", sub, today()
+                if j.get("status") in (None, "", "Saved", "Skipped", "Expired"):
+                    j["status"] = "Applied"
+                if str(j.get("next_action") or "").startswith(("Past deadline", "Add resume version")):
+                    j["next_action"] = None
+                n += 1
+                if verbose:
+                    print(f"  Applied (from the resume builder): {str(j.get('company'))[:20]} - {str(j.get('title'))[:45]}")
+                if "Activity Log" in self.wb.sheetnames:
+                    add_log(self.wb, "Activity Log", [today(), "Resume Builder", "", ver, "Applied", j.get("id"),
+                                                      j.get("company"), f"Submitted {sub:%m/%d/%y} with {ver or 'a resume'}"])
+        return n
+
     def save(self):
         import scoring
         import sheets
+        self.import_resume_log()
         for j in self.jobs:
             normalize(j, self)
             self.locate(j)
+            if not j.get("track") and j.get("title"):
+                j["track"] = scoring.track_of(j["title"], self.s)
+            if not j.get("role_type") and j.get("title"):
+                j["role_type"] = scoring.role_of(j["title"], self.s)
+            if j.get("co_priority") in (None, ""):
+                j["co_priority"] = self.company_priority(j.get("company"), j.get("link"))
+            if j.get("years_req") in (None, "") and j.get("description"):
+                import reqcheck
+                y = reqcheck.years_required(str(j["description"]), reqcheck.my_degree_level(self.s),
+                                            self.s.get("watch_pref_words"))[0]
+                j["years_req"] = y if y is not None else "not stated"
+        self.archive_old()
         tabs = {t: [] for t in JOB_TABS}
         for j in self.jobs:
             tabs[tab_for(j)].append(j)
@@ -396,7 +695,81 @@ class Tracker:
             sheets.write_job_tab(self.wb, t, tabs[t], i, self.widths, self.group_hidden)
         sheets.finalize(self.wb)
         save_workbook(self.wb)
+        self.export_csv()
         return {t: len(v) for t, v in tabs.items()}
+
+    ARCHIVE_DAYS = 60
+    CSV_KEYS = ["id", "priority", "company", "title", "track", "role_type", "posted", "deadline", "location", "area",
+                "loc_tier", "co_priority", "years_req", "work_mode", "pay_min", "pay_max", "pay_unit", "status",
+                "applied", "date_applied", "resume", "next_action", "link", "requirements", "fit_score", "fit_notes", "notes",
+                "date_added", "emp_type", "description"]
+
+    def archive_old(self):
+        """Expired / Skipped jobs untouched for 60+ days leave the workbook for app/archive.csv; their links are
+        remembered so a scan never shows them again."""
+        import csv
+        cut = today() - dt.timedelta(days=self.ARCHIVE_DAYS)
+        old = [j for j in self.jobs if j.get("status") in ("Expired", "Skipped")
+               and (to_date(j.get("last_update")) or to_date(j.get("date_added")) or today()) < cut]
+        if not old:
+            return
+        path = APP_DIR / "archive.csv"
+        new_file = not path.exists()
+        try:
+            with open(path, "a", newline="", encoding="utf-8-sig" if new_file else "utf-8") as f:
+                w = csv.writer(f)
+                if new_file:
+                    w.writerow(["archived"] + KEYS)
+                for j in old:
+                    w.writerow([today().isoformat()] + [str(j.get(k) if j.get(k) is not None else "") for k in KEYS])
+        except OSError:
+            return  # couldn't write the archive: keep the jobs
+        st = load_state()
+        arch = st.setdefault("archived", {})
+        for j in old:
+            if j.get("link"):
+                arch[norm_url(str(j["link"]))] = today().isoformat()
+        save_state(st)
+        ids = {id(j) for j in old}
+        self.jobs = [j for j in self.jobs if id(j) not in ids]
+        print(f"  Archived {len(old)} expired/skipped job(s) older than {self.ARCHIVE_DAYS} days to app/archive.csv")
+
+    def export_csv(self):
+        """jobs.csv next to the workbook: every live job (not closed), plain values, for other apps (a resume builder).
+        Rewritten on every save, never appended to."""
+        import csv
+        import scoring
+        rows = [j for j in self.jobs if j.get("status") not in CLOSED]
+        rows.sort(key=lambda j: -(scoring.priority(j, self.s) or 0))
+        tmp = ROOT / "jobs.csv.tmp"
+        try:
+            with open(tmp, "w", newline="", encoding="utf-8-sig") as f:
+                w = csv.writer(f)
+                w.writerow(["Priority Score" if k == "priority" else "Requirements" if k == "requirements" else HEADER.get(k, k)
+                            for k in self.CSV_KEYS])
+                for j in rows:
+                    vals = []
+                    for k in self.CSV_KEYS:
+                        if k == "priority":
+                            v = round(scoring.priority(j, self.s) or 0, 1)
+                        elif k == "requirements":
+                            v = _req_summary(j, self.s)
+                        else:
+                            v = j.get(k)
+                        vals.append(v.isoformat() if isinstance(v, (dt.date, dt.datetime)) else ("" if v is None else v))
+                    w.writerow(vals)
+            os.replace(tmp, ROOT / "jobs.csv")
+        except OSError:
+            pass
+
+
+def _req_summary(j, s):
+    """Plain-text requirements for jobs.csv: 'Years: 3+; Degree: BS Mechanical; Skills: GD&T, Creo; Citizenship: US'."""
+    try:
+        import reqcheck
+        return reqcheck.summary(str(j.get("description") or ""), s)
+    except Exception:
+        return ""
 
 
 def _ord(d):
@@ -457,14 +830,29 @@ def read_tab(ws) -> list:
     return jobs
 
 
+CODE_BACKUPS_KEEP = 10
+
+
+def prune_backups():
+    """Keep the newest 15 workbook backups (any name starting Job_Tracker) and the newest 10 program-file backups."""
+    try:
+        books = sorted(BACKUP_DIR.glob("Job_Tracker*.xlsx"), key=lambda f: f.stat().st_mtime)
+        for f in books[:-BACKUPS_KEEP]:
+            f.unlink()
+        code = sorted(d for d in BACKUP_DIR.glob("code-*") if d.is_dir())
+        for d in code[:-CODE_BACKUPS_KEEP]:
+            shutil.rmtree(d, ignore_errors=True)
+    except OSError:
+        pass  # never let tidying up stop a save
+
+
 def save_workbook(wb):
     wait_for_excel_closed()
     BACKUP_DIR.mkdir(exist_ok=True)
     if WB_PATH.exists():
         stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
         shutil.copy2(WB_PATH, BACKUP_DIR / f"Job_Tracker_{stamp}.xlsx")
-        for f in sorted(BACKUP_DIR.glob("Job_Tracker_*.xlsx"))[:-BACKUPS_KEEP]:
-            f.unlink()
+        prune_backups()
     wb.calculation.fullCalcOnLoad = True
     # Write a complete new copy first, then swap it in, so a crash can't leave a half-written tracker.
     # The temporary name must NOT start with "." : macOS can keep such a file hidden in Finder after the rename.
@@ -658,7 +1046,7 @@ class AI:
 # ---------------------------------------------------------------- pay parsing
 _NUM = r"(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
 PAY_RE = re.compile(
-    r"(?:USD\s*)?\$\s?" + _NUM + r"\s*([kK])?(?:\s*(?:/|per|an|a)\s*(?:hour|hr|year|yr)\b)?"
+    r"(?:USD\s*)?\$\s?" + _NUM + r"\s*([kK])?(?:\s*(?:USD|usd)\b)?(?:\s*(?:/|per|an|a)\s*(?:hour|hr|year|yr)\b)?"
     r"(?:\s*(?:-|–|—|to|and)\s*(?:USD\s*)?\$?\s?" + _NUM + r"\s*([kK])?)?"
     r"(?:\s*(?:USD|usd))?"
     r"(?:\s*(?:/|per|an|a)\s*(hour|hr|year|yr|annum|month|mo|week|wk)\b|\s*(hourly|annually|yearly))?",
@@ -674,10 +1062,49 @@ def _to_num(s, k):
     return v * 1000 if k else v
 
 
+MINMAX_PAY = re.compile(
+    r"(?:min(?:imum)?|starting|low(?:er)?)\s*(?:base\s*)?(?:annual\s*)?(?:salary|pay|wage|rate|compensation)?\s*(?:range)?\s*[:\-–]?\s*"
+    r"\$\s*([\d,]+(?:\.\d+)?)\s*(k)?\s*(/\s*(?:hr|hour|yr|year)|per\s+(?:hour|year))?"
+    r"[^$]{0,60}?"
+    r"(?:max(?:imum)?|high(?:er)?|upper)\s*(?:base\s*)?(?:annual\s*)?(?:salary|pay|wage|rate|compensation)?\s*(?:range)?\s*[:\-–]?\s*"
+    r"\$\s*([\d,]+(?:\.\d+)?)\s*(k)?", re.I)
+
+
+USD_PAY = re.compile(  # Amazon: 'USA, CA, NORTHRIDGE - 122,600.00 - 160,000.00 USD annually'
+    r"(?<![\d$])(\d{2,3}(?:,\d{3})+|\d{2,3}(?:\.\d{1,2}))(?:\.\d{2})?\s*(?:-|–|—|to)\s*"
+    r"(\d{2,3}(?:,\d{3})+|\d{2,3}(?:\.\d{1,2}))(?:\.\d{2})?\s*USD\s*(annually|yearly|per year|hourly|per hour)?", re.I)
+
+
 def parse_pay(text: str):
     """Return (min, max, unit) where unit is 'Year' or 'Hour', or (None, None, None)."""
     if not text:
         return None, None, None
+    if "$" not in text or not PAY_RE.search(text):
+        m = USD_PAY.search(text)
+        if m:
+            lo, hi = float(m.group(1).replace(",", "")), float(m.group(2).replace(",", ""))
+            unit = "Hour" if (m.group(3) and "hour" in m.group(3).lower()) or hi < 300 else "Year"
+            if 0 < lo <= hi:
+                return (round(lo, 2), round(hi, 2), unit) if unit == "Hour" else (round(lo), round(hi), unit)
+    # labeled pairs on their own lines, matched by the rest of the label (Intuitive lists one pair per region):
+    # 'Min. Salary Region 1: $133800 USD' ... 'Max. Salary Region 1: $192600 USD'
+    pairs = {}
+    for lm in re.finditer(r"(?im)^\s*(min(?:imum)?|max(?:imum)?)\.?\s+([^:\n$]{0,40}?)\s*:\s*\$\s?([\d,]+(?:\.\d+)?)", text):
+        side = "lo" if lm.group(1).lower().startswith("min") else "hi"
+        key = re.sub(r"\s+", " ", lm.group(2).lower()).strip()
+        pairs.setdefault(key, {})[side] = float(lm.group(3).replace(",", ""))
+    for key, v in pairs.items():  # first complete pair, in the order the posting lists them
+        if "lo" in v and "hi" in v and 0 < v["lo"] <= v["hi"]:
+            unit = "Hour" if v["hi"] < 300 or "hour" in key else "Year"
+            return (round(v["lo"], 2), round(v["hi"], 2), unit) if unit == "Hour" else (round(v["lo"]), round(v["hi"]), unit)
+    m = MINMAX_PAY.search(text)  # 'Minimum Salary: $71,500 | Maximum Salary: $135,800'
+    if m:
+        lo = float(m.group(1).replace(",", "")) * (1000 if m.group(2) else 1)
+        hi = float(m.group(4).replace(",", "")) * (1000 if m.group(5) else 1)
+        if 0 < lo <= hi:
+            unit = "Hour" if (m.group(3) and "h" in m.group(3).lower()) or hi < 300 else "Year"
+            rd = (lambda v: round(v, 2)) if unit == "Hour" else round
+            return rd(lo), rd(hi), unit
     best = None
     for m in PAY_RE.finditer(text):
         before = re.split(r"[.;:]\s|\n", text[max(0, m.start() - 45):m.start()])[-1]  # this sentence only
