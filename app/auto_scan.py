@@ -52,6 +52,42 @@ def log(text: str, path: Path = LOG):
             log(text, FALLBACK_LOG)
 
 
+class LiveLog(io.TextIOBase):
+    """Everything the scan prints goes straight into the log file as it happens, so Auto Scan > 4 shows progress."""
+
+    def __init__(self, path: Path):
+        self.path, self.part = path, ""
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self.f = open(path, "a", encoding="utf-8")
+        except OSError:
+            self.f = None
+
+    def write(self, s):
+        self.part += s
+        while "\n" in self.part:
+            line, self.part = self.part.split("\n", 1)
+            if self.f and line.strip():
+                self.f.write(f"[{dt.datetime.now():%H:%M}] {line}\n")
+                self.f.flush()
+        return len(s)
+
+    def close(self):
+        if self.part.strip() and self.f:
+            self.f.write(self.part + "\n")
+        if self.f:
+            self.f.close()
+
+
+def trim_log():
+    try:
+        lines = LOG.read_text(encoding="utf-8").splitlines()
+        if len(lines) > KEEP_LINES:
+            LOG.write_text("\n".join(lines[-KEEP_LINES:]) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def load() -> dict:
     try:
         return json.loads(STATE.read_text())
@@ -122,7 +158,8 @@ def main():
 
     LOCK.write_text(str(os.getpid()))
     t0 = time.time()
-    buf = io.StringIO()
+    log("Scan started" + (" (run now)" if now else "") + ".")
+    buf = LiveLog(LOG)
     try:
         builtins.input = lambda *a, **k: ""  # never wait for an answer nobody is there to give
         sys.path.insert(0, str(APP))
@@ -141,8 +178,9 @@ def main():
         found = [r for r in shown if not r.get("filtered")]
         best = [r for r in found if r.get("loc_tier") in (1, 2)]
         mins = (time.time() - t0) / 60
+        buf.close()
         log(f"Scan finished in {mins:.0f} min: {len(found)} new match(es), {len(best)} in Tier 1-2, "
-            f"{len(shown) - len(found)} greyed.\n" + buf.getvalue())
+            f"{len(shown) - len(found)} greyed.")
         st.update({"last_done": today, "last_found": len(found), "last_minutes": round(mins, 1)})
         save(st)
         if found:
@@ -152,9 +190,11 @@ def main():
         else:
             notify("Daily scan done: no new matching jobs today.")
     except Exception:
-        log("The scan stopped with an error:\n" + buf.getvalue() + "\n" + traceback.format_exc())
+        buf.close()
+        log("The scan stopped with an error:\n" + traceback.format_exc())
         notify("The daily scan hit an error. Details: app/debug/auto_scan.log")
     finally:
+        trim_log()
         try:
             LOCK.unlink()
         except OSError:
