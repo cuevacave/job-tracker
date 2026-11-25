@@ -123,6 +123,24 @@ def online() -> bool:
     return False
 
 
+def mac_in_use() -> bool:
+    """True when the Mac is plugged in, or someone used the keyboard/mouse in the last 10 minutes. A closed laptop
+    on battery wakes briefly in the background now and then ("dark wake"); a scan started then gets frozen
+    mid-way when it falls back asleep, so those wakes are skipped. If this can't be told, assume yes."""
+    try:
+        ps = subprocess.run(["pmset", "-g", "ps"], capture_output=True, text=True, timeout=10).stdout
+        if "AC Power" in ps:
+            return True
+        io = subprocess.run(["ioreg", "-c", "IOHIDSystem", "-d", "4"], capture_output=True, text=True, timeout=10).stdout
+        import re
+        m = re.search(r'"HIDIdleTime"\s*=\s*(\d+)', io)
+        if not m:
+            return True
+        return int(m.group(1)) / 1e9 < 600
+    except Exception:
+        return True
+
+
 def main():
     flag = Path.home() / "Library" / "Application Support" / "JobTracker" / "run-now"  # set by Auto Scan.command
     now = "--now" in sys.argv or flag.exists()
@@ -152,6 +170,13 @@ def main():
             save(st)
         return
 
+    if not now and not mac_in_use():
+        if st.get("idle_skip") != today:
+            log("On battery and nobody is using the Mac (a background wake with the lid closed?); waiting until "
+                "it's plugged in or in use. Tries again every half hour.")
+            st["idle_skip"] = today
+            save(st)
+        return
     if not online():
         log("No internet connection (the Mac may have just woken up); trying again in an hour.")
         return

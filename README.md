@@ -204,7 +204,7 @@ All the lists are on Settings under **JOB WATCHER** (filter years, degree fields
 
 Let your Mac scan for you every morning. Open **Auto Scan** (first time: in Terminal, type `bash `, drag **Auto Scan.command** in, press Enter) and choose:
 
-- **1 = turn on.** Every active Watchlist company is scanned once a day from 6:30 am. If Excel has the tracker open, or there's no internet yet, it tries again every hour until 9:30 pm. If the Mac was asleep at 6:30, it runs when the Mac wakes. A notification tells you what it found ("7 new matches, 3 in Tier 1-2"); the jobs are on New Matches as usual.
+- **1 = turn on.** Every active Watchlist company is scanned once a day from 6:30 am. If Excel has the tracker open, or there's no internet yet, it tries again every hour until 9:30 pm. If the Mac was asleep at 6:30, it runs when the Mac wakes. On battery it waits until you're using the Mac (a closed laptop wakes briefly in the background now and then, and a scan started then would freeze halfway); plugged in, it runs any time. A notification tells you what it found ("7 new matches, 3 in Tier 1-2"); the jobs are on New Matches as usual.
 - **3 = run now.** Start a scan in the background, e.g. to test it. If macOS asks whether Python may access your Desktop or Documents folder, click **Allow** (otherwise the scheduled scan can't open your tracker; see Troubleshooting).
 - **4 = show the log** of the last scan (also in `app/debug/auto_scan.log`).
 - **5 = wake the Mac at 6:25 am** (asks for your Mac password; works when it's plugged in with the lid open). Undo with `sudo pmset repeat cancel`.
