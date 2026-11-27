@@ -272,7 +272,7 @@ SETTINGS = [
      "matches wins (anything else = Other).", True, None),
     ("apply_referral", "Apply: referral companies", "",
      "Companies where you have a referral, comma-separated (e.g. Medtronic, Qualcomm). Their jobs come first in the "
-     "apply order (Review screen, New Matches, To Apply, jobs.csv). Names match the way Co. Priority does.", True, None),
+     "apply order (My Job Board, New Matches, To Apply, jobs.csv). Names match the way Co. Priority does.", True, None),
     ("apply_top", "Apply: top companies", "",
      "Companies you'd most like to work for, comma-separated. They come right after referral companies.", True, None),
     ("apply_fit_min", "Apply: fit threshold", 5,
@@ -280,7 +280,7 @@ SETTINGS = [
     ("review_watch_outs", "Review: watch-out words",
      "systems engineering, MBSE, thermal, heat transfer, CFD, fluid dynamics, control theory, controls engineering, "
      "linear algebra, differential equations, Kalman",
-     "Highlighted (never hidden) on the Review screen when a posting mentions them: things you may want to read closely.",
+     "Highlighted (never hidden) on My Job Board when a posting mentions them: things you may want to read closely.",
      True, None),
     ("watch_local_only", "Watch: local-candidates-only wording",
      "only considering candidates local, candidates local to the position, local candidates only, "
@@ -290,15 +290,15 @@ SETTINGS = [
     ("review_no_relo", "Review: no-relocation wording",
      "no relocation, unable to provide relocation, relocation is not available, relocation is not provided, "
      "not eligible for relocation, relocation assistance is not",
-     "Tagged 'no relocation help' on the Review screen (never greyed): you can apply, but you'd pay for the move.",
+     "Tagged 'no relocation help' on My Job Board (never greyed): you can apply, but you'd pay for the move.",
      True, None),
     ("review_skip_reasons", "Review: skip reasons",
      "systems, thermal, math/controls, CFD, wrong field (CS/EE/wireless), link broken / closed, not interested",
-     "The reasons offered when you skip a job on the Review screen (keys 1-9), comma-separated. 'Other' lets you type "
+     "The reasons offered when you skip a job on My Job Board (keys 1-9), comma-separated. 'Other' lets you type "
      "your own.", True, None),
     ("review_interest_reasons", "Review: interesting reasons",
      "deep robotics, data / ML, controls, cool company, side project idea",
-     "Offered when you mark a job Interesting on the Review screen (key I, then 1-9): jobs that aren't a fit now but "
+     "Offered when you mark a job Interesting on My Job Board (key I, then 1-9): jobs that aren't a fit now but "
      "are worth a side project. They go on the Interesting tab, with the posting text saved in app/saved_postings.",
      True, None),
     ("watch_skill_dealbreakers", "Watch: required-skill dealbreakers", "",

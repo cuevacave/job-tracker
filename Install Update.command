@@ -49,6 +49,10 @@ cp "$SRC"/app/*.py "$SRC"/app/requirements.txt "$TARGET/app/"
 for f in "$SRC"/*.command "$SRC"/*.md "$SRC"/README.html "$SRC"/"READ ME FIRST.txt" "$SRC"/LICENSE "$SRC"/.gitignore; do
   [ -f "$f" ] && cp "$f" "$TARGET/"
 done
+# launchers renamed in later updates (the old copy is in the backup above)
+for old in "Review Jobs.command"; do
+  [ -f "$SRC/$old" ] || rm -f "$TARGET/$old"
+done
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null
 chmod +x "$TARGET"/*.command 2>/dev/null
 echo "  [2/4] New program files installed."

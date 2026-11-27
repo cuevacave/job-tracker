@@ -18,7 +18,7 @@ It's built for people who apply to a lot of jobs and are tired of copying titles
 - [Usage](#usage)
   - [Add Job](#add-job)
   - [Check Jobs (the job watcher)](#check-jobs-the-job-watcher)
-  - [Review Jobs (the review screen)](#review-jobs-the-review-screen)
+  - [My Job Board](#my-job-board)
   - [Automatic daily scan](#automatic-daily-scan)
   - [Check Email](#check-email)
   - [Rescore Jobs](#rescore-jobs)
@@ -143,7 +143,7 @@ A scan lists postings that are **new**, have one of your **title keywords**, con
 - **Experience:** a posting whose *required* experience is **4 years or more** is filtered. Preferred lines and "Preferred" sections don't count, ranges use the low end (`3-5 years` = 3), and if the posting offers a shorter path for your degree (`BS + 5 or MS + 3`) that one is used.
 - **Degree field:** a posting whose degree line names **only** fields that aren't yours (by default CS, computer engineering, EE, software, IT) is filtered. If it also accepts engineering, a field of yours, "a related field", or ends an open list with "etc.", it's kept and labeled, e.g. `CS/EE-leaning`.
 - **Required skills:** phrases in **Watch: required-skill dealbreakers** (empty at first) filter a posting when they appear in a required line.
-- **Local candidates only:** a posting that only hires people who already live nearby ("only considering candidates local to position location", "must live within commuting distance") is greyed, unless the job is in your Home area. The wording is on Settings: **Watch: local-candidates-only wording**. Postings that only say they won't pay for a move are not greyed; the Review screen tags them **no relocation help**.
+- **Local candidates only:** a posting that only hires people who already live nearby ("only considering candidates local to position location", "must live within commuting distance") is greyed, unless the job is in your Home area. The wording is on Settings: **Watch: local-candidates-only wording**. Postings that only say they won't pay for a move are not greyed; My Job Board tags them **no relocation help**.
 - **Pay:** a posting that lists pay is filtered when the top of its range is below your **Minimum acceptable total pay** (hourly pay counts as × 2080). Postings without pay are never filtered for pay. Switch: **Watch: filter jobs whose top pay is below my minimum**.
 - **Filtered jobs** are shown **greyed** below the real matches, with the reason and the posting's own words, once each. When you trust the filter, set **Watch: show filtered jobs on New Matches** to `No`: they're left off and listed in `app/debug/skipped.csv` instead.
 - **Can't read a posting?** It's kept, marked `not checked`. Descriptions are remembered for 30 days, so re-scans are fast.
@@ -205,14 +205,14 @@ All the lists are on Settings under **JOB WATCHER** (filter years, degree fields
 - **Senior filter:** **Watch: senior-level title words** and **Watch: level words** are plain lists you can edit. At consulting firms, add `Associate` if it's a senior title there.
 - **Titles that contain a skip word:** a skip or senior word doesn't count when it's part of a title keyword you listed. With the keyword `associate product manager`, "Associate Product Manager" gets through even though `Manager` is a skip word; "Senior Associate Product Manager" is still skipped.
 
-### Review Jobs (the review screen)
+### My Job Board
 
-Double-click **Review Jobs** (first time: in Terminal, type `bash `, drag **Review Jobs.command** in, press Enter). A page opens in your browser; it's served from your Mac only, nothing goes online. Keep the Terminal window open while you review.
+Double-click **My Job Board** (first time: in Terminal, type `bash `, drag **My Job Board.command** in, press Enter). A page opens in your browser; it's served from your Mac only, nothing goes online. Keep the Terminal window open while you review.
 
-- **To review** shows your undecided New Matches, 5 at a time, in the [apply order](#the-apply-order). Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click **Description** or press **E**). The link is there too.
+- **To review** shows your undecided New Matches, 5 at a time. **It opens on everything, newest found first**, so the jobs from the latest scan are on top with a green **New** tag. Press **My order (Tier 1-2)** to switch to your preferences: Tier 1-2 only, in the [apply order](#the-apply-order). **Newest (everything)** brings the first view back. Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click **Description** or press **E**). The link is there too.
 - **Watch-out words** (Settings) are highlighted on the job and in its description, e.g. thermal or CFD. They never hide a job.
 - **The same job in several places** is one card listing each location; tick the ones you want and press Add (the others count as skipped).
-- **Filters** (press **F** to fold them away): Tier, company Priority, Group (Referral/Top/Other), Years asked, Posted (this week, last 2 weeks, older), Role Type, Pay listed, and a search box. Tap a chip to show only those; tap again to undo; no chip in a row = all of them. Each chip shows how many jobs you'd see. The screen opens on **Tier 1-2** (plus jobs whose place is unclear); when those run low, a note offers to include Tier 3-4. Your filters are remembered in this browser. **Show everything** clears them. (Tier 3-4 only has jobs from companies without a lower **Max Tier** on the Watchlist: the scan doesn't keep jobs outside a company's Max Tier. Raise it to see them from the next scan, or deep scan the company for older ones.)
+- **Filters** (press **F** to fold them away): Found (latest scan, this week, older), Tier, company Priority, Group (Referral/Top/Other), Years asked, Posted (this week, last 2 weeks, older), Role Type, Pay listed, and a search box. Tap a chip to show only those; tap again to undo; no chip in a row = all of them. Each chip shows how many jobs you'd see. **Sort** switches between newest found and your apply order on its own, keeping your filters. When a Tier filter leaves 5 or fewer jobs, a note offers to include the other tiers. (Tier 3-4 only has jobs from companies without a lower **Max Tier** on the Watchlist: the scan doesn't keep jobs outside a company's Max Tier. Raise it to see them from the next scan, or deep scan the company for older ones.)
 - **Add (A)** adds the job exactly like Check Jobs > a. **Skip (S)** dismisses it; press a number for a reason (yours are on Settings > **Review: skip reasons**), **O** to type your own, or Enter for none. **Later (L)** moves it to the end for now.
 - **Interesting (I)** is for jobs that aren't a fit now but are worth a side project (deep robotics, data/ML...). Pick a reason the same way (Settings > **Review: interesting reasons**). The job leaves New Matches and goes on the **Interesting** tab of the workbook, and the full posting text is saved in `app/saved_postings` (the tab links to it), so you still have it after the posting is taken down.
 - When you've decided on all 5, the next 5 load. Your decisions are recorded as you go and written to the workbook (and the jobs you added put on To Apply) when you press **Save to workbook** or **Done: save and close**, or close the Terminal window. If the tracker is open in Excel, close it first; anything not saved yet is saved the next time you open the screen.
@@ -253,7 +253,7 @@ After changing your keywords, background, pay target or AI model, double-click *
 | **New Matches** | New postings from Check Jobs, waiting for you to Add or Dismiss. Greyed rows were filtered (reason in the Filtered column). |
 | **Applied** | Applications in progress; anything needing action is at the top. |
 | **Closed** | Rejected, Ghosted, Withdrawn, Skipped, Declined and Expired (posting taken down). |
-| **Interesting** | Jobs you marked Interesting on the Review screen: not a fit now, worth a side project. Links to the saved posting text; a My notes column is yours. |
+| **Interesting** | Jobs you marked Interesting on My Job Board: not a fit now, worth a side project. Links to the saved posting text; a My notes column is yours. |
 | **Needs Review / Activity Log** | From Check Email (see above). |
 | **Watchlist** | Companies for Check Jobs. |
 | **Settings / Areas** | Your preferences (see [First things to set](#first-things-to-set)). |
@@ -267,9 +267,9 @@ After changing your keywords, background, pay target or AI model, double-click *
 
 ## The apply order
 
-One rule decides what to look at and apply to first. It's used by the Review screen, New Matches, To Apply and jobs.csv.
+One rule decides what to look at and apply to first. It's used by My Job Board, New Matches, To Apply and jobs.csv.
 
-- **Groups** (Settings, or the Review screen's Settings tab): **Apply: referral companies** and **Apply: top companies**, comma-separated. Every other company is Other. Names match like Co. Priority does, so a job filed under a company's legal name still counts.
+- **Groups** (Settings, or My Job Board's Settings tab): **Apply: referral companies** and **Apply: top companies**, comma-separated. Every other company is Other. Names match like Co. Priority does, so a job filed under a company's legal name still counts.
 - **Order:** jobs in Tier 1-2 first (Referral, then Top, then Other), then every other job in the same group order.
 - **Order:** by location Tier first: Tier 1, then Tier 2, then jobs whose place is unclear, then Tier 3, then Tier 4. Within a tier: Referral, then Top, then Other. So a Pittsburgh or Colorado Springs job from any company comes before a Tier 2 job at a top company.
 - **Within a group:** jobs whose **Fit** is below **Apply: fit threshold** (default 5) go last. The rest go by Fit in steps of 2 (8-10, then 6-8, ...); within a step, jobs asking 0-2 years come first, then "not stated", then more; then highest Fit; then newest posting.
@@ -277,13 +277,13 @@ One rule decides what to look at and apply to first. It's used by the Review scr
 
 ### How Fit works
 
-Fit (0-10) comes from the words in the posting (benefits and legal text ignored), your role order, and the years the job asks. Every card on the Review screen says why it got its score, e.g. `Keywords 8.5 · Role Design / R&D +1 | Matched: injection molding (title), DFM, ... | Minus: RF`.
+Fit (0-10) comes from the words in the posting (benefits and legal text ignored), your role order, and the years the job asks. Every card on My Job Board says why it got its score, e.g. `Keywords 8.5 · Role Design / R&D +1 | Matched: injection molding (title), DFM, ... | Minus: RF`.
 
 - **Fit: core keywords** count double, **Fit keywords** count once, and **Fit: common words** (test, design, CAD...) count about a third, so a posting can't score high just by saying "design" and "test". A word in the title counts 1.5x; a word mentioned twice or more in the posting counts fully, once counts half.
 - **Fit: minus words** lower the score: -3 in the title, -1.5 mentioned twice or more, -0.5 for one passing mention. They never hide a job.
 - **Fit: role order** lists Role Types from best to worst, groups separated by `>`, e.g. `Design / R&D > Manufacturing & Process, Quality & Reliability, Test & Validation, Integration > Systems, Applications & Field`. The first group gets +1, the last -2; types you don't list count as the middle. Blank = off.
 - **Experience:** a job asking far more years than you have is scaled down (a posting with the right words but 8+ years asked still scores low).
-- **Check it against your own decisions:** `app/decisions.csv` records what you added and skipped on the Review screen; the jobs you add should mostly score higher than the ones you skip. If a kind of job you like keeps scoring low, add its words to core keywords.
+- **Check it against your own decisions:** `app/decisions.csv` records what you added and skipped on My Job Board; the jobs you add should mostly score higher than the ones you skip. If a kind of job you like keeps scoring low, add its words to core keywords.
 
 ## Using a resume builder
 

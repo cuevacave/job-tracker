@@ -1,6 +1,6 @@
-"""Review screen: a local web page for deciding on New Matches, 5 jobs at a time.
+"""My Job Board: a local web page for deciding on New Matches, 5 jobs at a time.
 
-Started by Review Jobs.command. Runs only on this Mac (http://127.0.0.1); nothing goes online except the job
+Started by My Job Board.command. Runs only on this Mac (http://127.0.0.1); nothing goes online except the job
 links you click yourself. Every decision is written right away to app/decisions.csv (your history: what you added
 or skipped, when, and why) and queued for the workbook; the queue is applied whenever the tracker isn't open in
 Excel (with Save, Done, or when the window closes). Add uses the same step as Check Jobs > a; Skip is the tracker's
@@ -43,7 +43,7 @@ SETTING_KEYS = {"apply_referral": "Apply: referral companies", "apply_top": "App
                 "apply_fit_min": "Apply: fit threshold", "review_watch_outs": "Review: watch-out words",
                 "review_skip_reasons": "Review: skip reasons",
                 "review_interest_reasons": "Review: interesting reasons"}
-FACETS = ("tier", "prio", "grp", "yrs", "age", "role", "pay")
+FACETS = ("found", "tier", "prio", "grp", "yrs", "age", "role", "pay")
 LATER = set()            # row keys put off during this session (shown last)
 LOCK = threading.Lock()  # one change at a time
 _VIEW = {"mtime": None}
@@ -133,9 +133,23 @@ def _watch_hits(text: str, words: list) -> list:
     return out
 
 
-def card_attrs(g: list) -> dict:
-    """What the filters look at, for one card (its best row; Tier = its best location)."""
+def _found(r):
+    d = common.to_date(r.get("found"))
+    if isinstance(d, str):
+        try:
+            d = dt.date.fromisoformat(d[:10])
+        except ValueError:
+            d = None
+    return d.date() if isinstance(d, dt.datetime) else d
+
+
+def card_attrs(g: list, latest=None) -> dict:
+    """What the filters look at, for one card (its best row; Tier = its best location). latest = the day the
+    newest jobs on the board were found (the latest scan that found any)."""
     first = g[0]
+    fd = max((d for d in (_found(r) for r in g) if d), default=None)
+    found = ("none" if fd is None else "latest" if latest and fd >= latest
+             else "7" if (dt.date.today() - fd).days <= 7 else "old")
     tiers = [r.get("loc_tier") for r in g if isinstance(r.get("loc_tier"), (int, float))]
     y = first.get("years")
     y = years_number(y) if not isinstance(y, (int, float)) else y
@@ -151,7 +165,7 @@ def card_attrs(g: list) -> dict:
         pr = str(int(float(pr)))
     except (TypeError, ValueError):
         pr = "-"
-    return {"tier": str(int(min(tiers))) if tiers else "u", "prio": pr, "grp": first.get("apply_group") or "Other",
+    return {"found": found, "tier": str(int(min(tiers))) if tiers else "u", "prio": pr, "grp": first.get("apply_group") or "Other",
             "yrs": "none" if y is None else ("0-2" if y <= 2 else "3+"),
             "age": "none" if ago is None else ("7" if ago <= 7 else "14" if ago <= 14 else "old"),
             "role": first.get("role_type") or "Other", "pay": "listed" if first.get("pay") else "none"}
@@ -171,7 +185,8 @@ def apply_filters(groups: list, f: dict):
     if q:
         groups = [g for g in groups if q in f"{g[0].get('company')} {g[0].get('title')} "
                                            f"{' '.join(str(r.get('location')) for r in g)}".lower()]
-    attrs = [card_attrs(g) for g in groups]
+    latest = max((d for g in groups for d in (_found(r) for r in g) if d), default=None)
+    attrs = [card_attrs(g, latest) for g in groups]
     counts = {k: {} for k in FACETS}
     for a in attrs:
         for k in FACETS:
@@ -181,7 +196,7 @@ def apply_filters(groups: list, f: dict):
     return keep, counts
 
 
-def cards(show: str, f: dict = None):
+def cards(show: str, f: dict = None, sort: str = "new"):
     """Jobs grouped into cards (same company and title in several places = one card), in the apply order, with your
     filters applied. Returns (settings, cards, filter counts)."""
     import watcher
@@ -228,7 +243,13 @@ def cards(show: str, f: dict = None):
     for g in groups.values():
         g.sort(key=rules.row_key)
         later = all(r.get("key") in LATER for r in g)
-        out.append((later, rules.row_key(g[0]), g))
+        k = rules.row_key(g[0])
+        if sort == "new":  # newest found first, then newest posted, then your apply order
+            fd = max((d for d in (_found(r) for r in g) if d), default=None)
+            pd = common.to_date(g[0].get("posted"))
+            pd = pd if isinstance(pd, (dt.date, dt.datetime)) else None
+            k = (-(fd.toordinal() if fd else 0), -(pd.toordinal() if pd else 0), k)
+        out.append((later, k, g))
     out.sort(key=lambda x: (x[0], x[1]))
     keep, counts = apply_filters([g for _, _, g in out], f)
     return s, keep, counts
@@ -263,6 +284,7 @@ def card_json(g: list, s: dict) -> dict:
                                                               .split(",") if w.strip()]) else []),
         "description": desc, "reason": first.get("_reason"), "when": first.get("_when"),
         "tier": card_attrs(g)["tier"], "prio": first.get("co_priority"),
+        "found": (lambda d: d.isoformat() if d else None)(max((d for d in (_found(r) for r in g) if d), default=None)),
         "rows": [{"key": r.get("key"), "location": r.get("location"), "area": r.get("area"), "tier": r.get("loc_tier"),
                   "link": r.get("link"), "pay": r.get("pay"), "years": r.get("years")} for r in g],
     }
@@ -443,10 +465,12 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/cards":
                 f = {k: set(x for x in q[k].split(",") if x) for k in FACETS if q.get(k)}
                 f["q"] = q.get("q", "")
-                s, all_cards, counts = cards(q.get("show", "review"), f)
+                s, all_cards, counts = cards(q.get("show", "review"), f, q.get("sort", "new"))
                 page = max(0, int(q.get("page", 0)))
                 part = all_cards[page * PAGE:(page + 1) * PAGE]
+                latest = max((d for g in all_cards for d in (_found(r) for r in g) if d), default=None)
                 return self._send({**status(), "total": len(all_cards), "page": page, "counts": counts,
+                                   "latest": latest.isoformat() if latest else None,
                                    "cards": [card_json(g, s) for g in part]})
             if u.path == "/api/settings":
                 s, _, _ = view()
@@ -481,7 +505,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 PAGE_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Review jobs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>My Job Board</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1f2328;--mut:#5b6472;--line:#dfe3e8;--acc:#0b63ce;--ok:#1a7f37;--no:#b42318;--warn:#b54708;--warnbg:#fff4e5;--chip:#eef1f5}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a20;--fg:#e6e9ee;--mut:#9aa3af;--line:#2a2f38;--acc:#4c9aff;--ok:#3fb950;--no:#f85149;--warn:#f0a35e;--warnbg:#2b2113;--chip:#232833}}
@@ -516,21 +540,23 @@ button.act:hover{border-color:var(--acc)}main{max-width:980px;margin:0 auto;padd
 .fc.on{background:var(--acc);border-color:var(--acc);color:#fff}.fc.on span{color:#e8f0fe}.fc.zero{opacity:.45}
 #fq{font:inherit;font-size:13px;padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);width:220px}
 .nudge{margin:0 0 12px;padding:10px 14px;border-radius:8px;background:var(--warnbg);color:var(--warn);font-size:14px}.nudge button{margin-left:8px}
+.g.new{background:#e5f4e4;color:#1e7b34;font-weight:600}
 .btns .int{border-color:#7a5af8;color:#7a5af8}
 .reasons input{font:inherit;font-size:13px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);display:none}.reasons.other input{display:inline-block}
 </style></head><body>
-<header><h1>Review jobs</h1>
+<header><h1>My Job Board</h1>
 <div class="tabs"><button data-t="review" class="on">To review</button><button data-t="greyed">Greyed</button><button data-t="skipped">Skipped</button><button data-t="interesting">Interesting</button><button data-t="settings">Settings</button></div>
 <div class="sp"></div><span class="pend" id="pend"></span><button class="act" id="save">Save to workbook</button><button class="act" id="quit">Done: save and close</button></header>
 <div id="cover"><div><b id="covt">Saving to the workbook...</b><p id="covp"></p></div></div>
 <main><div class="msg" id="msg"></div><div id="filters"></div><div id="nudge"></div><div id="list"></div><div class="nav" id="nav"></div>
-<p class="help">Keys: <b>A</b> add · <b>S</b> skip (then a number for the reason, <b>O</b> to type your own, Enter for none) · <b>I</b> interesting, for a side project (reasons the same way) · <b>L</b> later · <b>J/K</b> next/previous job · <b>E</b> description · <b>N/P</b> next/previous 5 · <b>F</b> filters<br>Your decisions are recorded as you go and written to the workbook when you press <b>Save</b> or <b>Done</b> (or close the Terminal window).</p></main>
+<p class="help">Keys: <b>A</b> add · <b>S</b> skip (then a number for the reason, <b>O</b> to type your own, Enter for none) · <b>I</b> interesting, for a side project (reasons the same way) · <b>L</b> later · <b>J/K</b> next/previous job · <b>E</b> description · <b>N/P</b> next/previous 5 · <b>F</b> show/hide the view options<br>Your decisions are recorded as you go and written to the workbook when you press <b>Save</b> or <b>Done</b> (or close the Terminal window).</p></main>
 <script>
 let tab="review",page=0,data=null,focus=0,reasons=[],ints=[];
 const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-let filt=store.get("jt_filters",{tier:["1","2","u"]}),fopen=store.get("jt_fopen",true),fq="";
-const FL={tier:["Tier",["1","2","u","3","4"],{u:"? (unclear)"}],prio:["Priority",null,{"-":"not on Watchlist"}],grp:["Group",["Referral","Top","Other"],{}],
+const MINE={tier:["1","2","u"]};
+let filt={},sort="new",fopen=store.get("jt_fopen",true),fq="";  // the board opens on everything, newest first
+const FL={found:["Found",["latest","7","old","none"],{latest:"latest scan",7:"this week",old:"older",none:"no date"}],tier:["Tier",["1","2","u","3","4"],{u:"? (unclear)"}],prio:["Priority",null,{"-":"not on Watchlist"}],grp:["Group",["Referral","Top","Other"],{}],
 yrs:["Years",["0-2","3+","none"],{none:"not stated"}],age:["Posted",["7","14","old","none"],{"7":"this week","14":"last 2 weeks",old:"older",none:"no date"}],role:["Role",null,{}],pay:["Pay",["listed","none"],{none:"not listed"}]};
 const filtered=()=>tab==="review"||tab==="greyed";
 async function api(p,b){const r=await fetch(p,b?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}:{});return r.json()}
@@ -541,29 +567,30 @@ async function save(quit){const st=await api("/api/status");if(st.excel){msg("Th
 cover(true,quit?"Saving and closing...":"Saving to the workbook...",st.adds?`Adding ${st.adds} job(s) to To Apply: about ${Math.max(5,st.adds*6)} seconds.`:"A few seconds.");
 const r=await api(quit?"/api/quit":"/api/apply",{});cover(false);if(quit&&!r.pending){document.body.innerHTML=`<main><h2>Saved. You can close this tab.</h2><p>${esc(r.message||"")}</p></main>`;return true}msg(r.message);return true}
 function mark(text,words){let t=esc(text);for(const w of words){const re=new RegExp("(?<![\\w])("+w.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")(?![\\w])","gi");t=t.replace(re,"<mark>$1</mark>")}return t}
-function query(){let q=`show=${tab}&page=${page}`;if(filtered()){for(const k in FL)if(filt[k]&&filt[k].length)q+=`&${k}=${encodeURIComponent(filt[k].join(","))}`;if(fq)q+=`&q=${encodeURIComponent(fq)}`}return q}
+function query(){let q=`show=${tab}&page=${page}&sort=${sort}`;if(filtered()){for(const k in FL)if(filt[k]&&filt[k].length)q+=`&${k}=${encodeURIComponent(filt[k].join(","))}`;if(fq)q+=`&q=${encodeURIComponent(fq)}`}return q}
 async function load(){msg("");if(tab==="settings"){$("#filters").innerHTML="";$("#nudge").innerHTML="";return settings()}data=await api(`/api/cards?${query()}`);if(data.error){msg(data.error);return}pend(data);renderFilters();render()}
 function label(k,v){const m=FL[k][2];return m[v]??(k==="prio"?"P"+v:v)}
-function summary(){const on=Object.keys(FL).filter(k=>filt[k]&&filt[k].length).map(k=>FL[k][0]+" "+filt[k].map(v=>label(k,v)).join(", "));if(fq)on.push(`"${fq}"`);return on.length?on.join(" · "):"showing everything"}
+function summary(){const on=[sort==="new"?"newest found first":"my order"].concat(Object.keys(FL).filter(k=>filt[k]&&filt[k].length).map(k=>FL[k][0]+" "+filt[k].map(v=>label(k,v)).join(", ")));if(fq)on.push(`"${fq}"`);return on.join(" · ")+(on.length===1?" · everything":"")}
 function renderFilters(){const F=$("#filters");if(!filtered()){F.innerHTML="";$("#nudge").innerHTML="";return}const c=data.counts||{};
 const rows=Object.keys(FL).map(k=>{let vals=FL[k][1];const have=c[k]||{};if(!vals){vals=Object.keys(have).sort((a,b)=>k==="prio"?(a==="-")-(b==="-")||a-b:(have[b]-have[a]));}
 const sel=filt[k]||[];vals=vals.filter(v=>have[v]||sel.includes(v));if(!vals.length)return"";
 return `<div class="frow"><b>${FL[k][0]}</b>${vals.map(v=>`<button class="fc${sel.includes(v)?" on":""}${have[v]?"":" zero"}" data-f="${k}" data-v="${esc(v)}">${esc(label(k,v))}<span>(${have[v]||0})</span></button>`).join("")}</div>`}).join("");
-F.innerHTML=`<details id="fbox" ${fopen?"open":""}><summary>Filters <span>· ${esc(summary())}</span></summary>${rows}<div class="frow"><b>Search</b><input id="fq" placeholder="company, title or place" value="${esc(fq)}"><button class="fc" id="fclear">Show everything</button><button class="fc" id="fdef">Default (Tier 1-2)</button></div><div class="hint" style="font-size:12.5px;color:var(--mut)">Tap to show only those; tap again to undo. No chip picked in a row = all of them. Numbers = jobs you'd see with your other filters.</div></details>`;
+F.innerHTML=`<details id="fbox" ${fopen?"open":""}><summary>View <span>· ${esc(summary())}</span></summary><div class="frow"><b>Views</b><button class="fc${sort==="new"&&!Object.keys(filt).some(k=>filt[k]&&filt[k].length)?" on":""}" id="fclear">Newest (everything)</button><button class="fc${sort==="mine"&&JSON.stringify(filt)===JSON.stringify(MINE)?" on":""}" id="fdef">My order (Tier 1-2)</button></div><div class="frow"><b>Sort</b><button class="fc${sort==="new"?" on":""}" data-s="new">Newest found</button><button class="fc${sort==="mine"?" on":""}" data-s="mine">My order</button></div>${rows}<div class="frow"><b>Search</b><input id="fq" placeholder="company, title or place" value="${esc(fq)}"></div><div class="hint" style="font-size:12.5px;color:var(--mut)">Tap to show only those; tap again to undo. No chip picked in a row = all of them. Numbers = jobs you'd see with your other filters.</div></details>`;
 $("#fbox").ontoggle=()=>{fopen=$("#fbox").open;store.set("jt_fopen",fopen)};
 F.querySelectorAll(".fc[data-f]").forEach(b=>b.onclick=()=>{const k=b.dataset.f,v=b.dataset.v;const s=new Set(filt[k]||[]);s.has(v)?s.delete(v):s.add(v);filt[k]=[...s];refilter()});
-$("#fclear").onclick=()=>{filt={};fq="";refilter()};$("#fdef").onclick=()=>{filt={tier:["1","2","u"]};fq="";refilter()};
+$("#fclear").onclick=()=>{filt={};sort="new";fq="";refilter()};$("#fdef").onclick=()=>{filt=JSON.parse(JSON.stringify(MINE));sort="mine";fq="";refilter()};
+F.querySelectorAll(".fc[data-s]").forEach(b=>b.onclick=()=>{sort=b.dataset.s;refilter()});
 let tmr;$("#fq").oninput=e=>{clearTimeout(tmr);tmr=setTimeout(()=>{fq=e.target.value.trim();page=0;focus=0;load().then(()=>{const i=$("#fq");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}})},350)};
 const N=$("#nudge");N.innerHTML="";if(tab==="review"&&filt.tier&&filt.tier.length&&data.total<=5){const more=Object.entries(c.tier||{}).filter(([v,n])=>n&&!filt.tier.includes(v));
 if(more.length){N.innerHTML=`<div class="nudge">${data.total?`Only ${data.total} job(s) left`:"Nothing left"} in Tier ${filt.tier.map(v=>label("tier",v)).join(", ")}. ${more.map(([v,n])=>`Tier ${esc(label("tier",v))} has ${n}`).join(", ")}.<button class="act" id="more">Include them</button></div>`;
 $("#more").onclick=()=>{filt.tier=[...new Set([...filt.tier,...more.map(x=>x[0])])];refilter()}}}}
-function refilter(){store.set("jt_filters",filt);page=0;focus=0;load()}
+function refilter(){page=0;focus=0;load()}
 function rbox(kind,list){return `<span class="reasons" data-kind="${kind}">${list.map((r,j)=>`<button data-r="${esc(r)}">${j+1} ${esc(r)}</button>`).join("")}<button data-o="1">O other...</button><input placeholder="type a reason, Enter"><button data-r="">no reason</button></span>`}
 function render(){const L=$("#list");if(!data.cards.length){L.innerHTML=`<p class="help">${tab==="review"?(data.total===0&&filtered()?"Nothing left to review with these filters. New jobs arrive with the next scan.":"Nothing left to review."):"Nothing here."}</p>`;$("#nav").innerHTML="";return}
 L.innerHTML=data.cards.map((c,i)=>{const multi=c.rows.length>1;const locs=c.rows.map((r,j)=>multi?`<label><input type="checkbox" data-k="${esc(r.key)}" ${j===0?"checked":""}> ${esc(r.location)} · Tier ${esc(r.tier??"?")}${r.pay&&r.pay!==c.pay?" · "+esc(r.pay):""} · <a href="${esc(r.link)}" target="_blank">open</a></label>`:`${esc(r.location)} · Tier ${esc(r.tier??"?")} · <a href="${esc(r.link)}" target="_blank">open posting</a>`).join("");
 const act=(tab==="skipped"||tab==="interesting")?`<button class="add" data-a="restore">Bring back</button>`:`<button class="add" data-a="add">Add<kbd>A</kbd></button><button class="skip" data-a="skip">Skip<kbd>S</kbd></button><button class="int" data-a="interesting">Interesting<kbd>I</kbd></button><button data-a="later">Later<kbd>L</kbd></button>${rbox("skip",reasons)}${rbox("interesting",ints)}`;
-return `<div class="card" tabindex="0" data-i="${i}"><div class="top"><span class="co">${esc(c.company)}</span><span class="g ${esc(c.group)}">${esc(c.group)}</span>${c.role?`<span class="g">${esc(c.role)}</span>`:""}${c.prio?`<span class="g">P${esc(c.prio)}</span>`:""}</div>
-<div class="ti">${esc(c.title)}</div><div class="facts"><span>Years <b>${c.years??"not stated"}</b></span><span>Fit <b>${c.fit??"?"}</b>/10</span><span>Pay <b>${esc(c.pay||"not listed")}</b></span><span>Posted <b>${c.posted?esc(c.posted)+" ("+c.ago+"d ago)":"?"}</b></span>${multi?`<span><b>${c.rows.length}</b> locations</span>`:""}</div>
+return `<div class="card" tabindex="0" data-i="${i}"><div class="top"><span class="co">${esc(c.company)}</span><span class="g ${esc(c.group)}">${esc(c.group)}</span>${c.role?`<span class="g">${esc(c.role)}</span>`:""}${c.prio?`<span class="g">P${esc(c.prio)}</span>`:""}${c.found&&c.found===data.latest&&tab==="review"?`<span class="g new">New</span>`:""}</div>
+<div class="ti">${esc(c.title)}</div><div class="facts"><span>Years <b>${c.years??"not stated"}</b></span><span>Fit <b>${c.fit??"?"}</b>/10</span><span>Pay <b>${esc(c.pay||"not listed")}</b></span><span>Posted <b>${c.posted?esc(c.posted)+" ("+c.ago+"d ago)":"?"}</b></span><span>Found <b>${c.found?esc(c.found):"?"}</b></span>${multi?`<span><b>${c.rows.length}</b> locations</span>`:""}</div>
 ${c.watch.length||c.flags.length?`<div class="watch">${c.flags.map(w=>`<span class="w f">${esc(w)}</span>`).join("")}${c.watch.map(w=>`<span class="w">${esc(w)}</span>`).join("")}</div>`:""}
 <div class="locs">${locs}</div>${c.requirements?`<div class="req">Requirements: ${esc(c.requirements)}</div>`:""}${c.filtered?`<div class="grey">Greyed: ${esc(c.filtered)}</div>`:""}${c.reason!=null&&(tab==="skipped"||tab==="interesting")?`<div class="grey">${tab==="skipped"?"Skipped":"Saved"} ${esc(c.when)}${c.reason?": "+esc(c.reason):""}</div>`:""}
 ${c.fit_notes?`<div class="notes">Fit: ${esc(c.fit_notes)}</div>`:""}<details><summary>Description</summary><div class="desc">${c.description?mark(c.description,c.watch):"Not saved. Use the link above."}</div></details>
@@ -613,9 +640,9 @@ def main():
         except OSError:
             continue
     else:
-        sys.exit("No free local port for the review screen.")
+        sys.exit("No free local port for My Job Board.")
     url = f"http://127.0.0.1:{port}/"
-    print(f"  Review screen: {url}")
+    print(f"  My Job Board: {url}")
     print("  It opened in your browser. Keep this window open while you review; close it (or press Ctrl+C) when done.")
     if load_pending()["decisions"] and not excel_open():
         print("  Saving decisions left from last time...")
@@ -634,11 +661,11 @@ def main():
     if p["decisions"] or p["settings"]:
         if excel_open():
             say(f"\n  {len(p['decisions'])} decision(s) are kept in app/review_pending.json; they go into the workbook "
-                f"the next time you open the Review screen with Excel closed.")
+                f"the next time you open the My Job Board with Excel closed.")
         else:
             say("\n  Saving your decisions to the workbook...")
             say("  " + apply_now().get("message", ""))
-    say("  Review screen closed.")
+    say("  My Job Board closed.")
 
 
 def say(text: str):

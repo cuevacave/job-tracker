@@ -1,4 +1,4 @@
-"""The shared "apply first" order, used by the Review screen, New Matches, To Apply and jobs.csv.
+"""The shared "apply first" order, used by My Job Board, New Matches, To Apply and jobs.csv.
 
 Groups come from two Settings rows (your data, kept in the workbook): "Apply: referral companies" and
 "Apply: top companies". Every other company is Other.

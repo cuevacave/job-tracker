@@ -35,7 +35,7 @@ li { margin:.2em 0; }
 <li><a href="#usage">Usage</a><ul>
 <li><a href="#add-job">Add Job</a></li>
 <li><a href="#check-jobs-the-job-watcher">Check Jobs (the job watcher)</a></li>
-<li><a href="#review-jobs-the-review-screen">Review Jobs (the review screen)</a></li>
+<li><a href="#my-job-board">My Job Board</a></li>
 <li><a href="#automatic-daily-scan">Automatic daily scan</a></li>
 <li><a href="#check-email">Check Email</a></li>
 <li><a href="#rescore-jobs">Rescore Jobs</a></li>
@@ -205,7 +205,7 @@ li { margin:.2em 0; }
 <li><strong>Experience:</strong> a posting whose <em>required</em> experience is <strong>4 years or more</strong> is filtered. Preferred lines and "Preferred" sections don't count, ranges use the low end (<code>3-5 years</code> = 3), and if the posting offers a shorter path for your degree (<code>BS + 5 or MS + 3</code>) that one is used.</li>
 <li><strong>Degree field:</strong> a posting whose degree line names <strong>only</strong> fields that aren't yours (by default CS, computer engineering, EE, software, IT) is filtered. If it also accepts engineering, a field of yours, "a related field", or ends an open list with "etc.", it's kept and labeled, e.g. <code>CS/EE-leaning</code>.</li>
 <li><strong>Required skills:</strong> phrases in <strong>Watch: required-skill dealbreakers</strong> (empty at first) filter a posting when they appear in a required line.</li>
-<li><strong>Local candidates only:</strong> a posting that only hires people who already live nearby ("only considering candidates local to position location", "must live within commuting distance") is greyed, unless the job is in your Home area. The wording is on Settings: <strong>Watch: local-candidates-only wording</strong>. Postings that only say they won't pay for a move are not greyed; the Review screen tags them <strong>no relocation help</strong>.</li>
+<li><strong>Local candidates only:</strong> a posting that only hires people who already live nearby ("only considering candidates local to position location", "must live within commuting distance") is greyed, unless the job is in your Home area. The wording is on Settings: <strong>Watch: local-candidates-only wording</strong>. Postings that only say they won't pay for a move are not greyed; My Job Board tags them <strong>no relocation help</strong>.</li>
 <li><strong>Pay:</strong> a posting that lists pay is filtered when the top of its range is below your <strong>Minimum acceptable total pay</strong> (hourly pay counts as × 2080). Postings without pay are never filtered for pay. Switch: <strong>Watch: filter jobs whose top pay is below my minimum</strong>.</li>
 <li><strong>Filtered jobs</strong> are shown <strong>greyed</strong> below the real matches, with the reason and the posting's own words, once each. When you trust the filter, set <strong>Watch: show filtered jobs on New Matches</strong> to <code>No</code>: they're left off and listed in <code>app/debug/skipped.csv</code> instead.</li>
 <li><strong>Can't read a posting?</strong> It's kept, marked <code>not checked</code>. Descriptions are remembered for 30 days, so re-scans are fast.</li>
@@ -315,13 +315,13 @@ li { margin:.2em 0; }
 <li><strong>Senior filter:</strong> <strong>Watch: senior-level title words</strong> and <strong>Watch: level words</strong> are plain lists you can edit. At consulting firms, add <code>Associate</code> if it's a senior title there.</li>
 <li><strong>Titles that contain a skip word:</strong> a skip or senior word doesn't count when it's part of a title keyword you listed. With the keyword <code>associate product manager</code>, "Associate Product Manager" gets through even though <code>Manager</code> is a skip word; "Senior Associate Product Manager" is still skipped.</li>
 </ul>
-<h3 id="review-jobs-the-review-screen">Review Jobs (the review screen)</h3>
-<p>Double-click <strong>Review Jobs</strong> (first time: in Terminal, type <code>bash</code>, drag <strong>Review Jobs.command</strong> in, press Enter). A page opens in your browser; it's served from your Mac only, nothing goes online. Keep the Terminal window open while you review.</p>
+<h3 id="my-job-board">My Job Board</h3>
+<p>Double-click <strong>My Job Board</strong> (first time: in Terminal, type <code>bash</code>, drag <strong>My Job Board.command</strong> in, press Enter). A page opens in your browser; it's served from your Mac only, nothing goes online. Keep the Terminal window open while you review.</p>
 <ul>
-<li><strong>To review</strong> shows your undecided New Matches, 5 at a time, in the <a href="#the-apply-order">apply order</a>. Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click <strong>Description</strong> or press <strong>E</strong>). The link is there too.</li>
+<li><strong>To review</strong> shows your undecided New Matches, 5 at a time. <strong>It opens on everything, newest found first</strong>, so the jobs from the latest scan are on top with a green <strong>New</strong> tag. Press <strong>My order (Tier 1-2)</strong> to switch to your preferences: Tier 1-2 only, in the <a href="#the-apply-order">apply order</a>. <strong>Newest (everything)</strong> brings the first view back. Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click <strong>Description</strong> or press <strong>E</strong>). The link is there too.</li>
 <li><strong>Watch-out words</strong> (Settings) are highlighted on the job and in its description, e.g. thermal or CFD. They never hide a job.</li>
 <li><strong>The same job in several places</strong> is one card listing each location; tick the ones you want and press Add (the others count as skipped).</li>
-<li><strong>Filters</strong> (press <strong>F</strong> to fold them away): Tier, company Priority, Group (Referral/Top/Other), Years asked, Posted (this week, last 2 weeks, older), Role Type, Pay listed, and a search box. Tap a chip to show only those; tap again to undo; no chip in a row = all of them. Each chip shows how many jobs you'd see. The screen opens on <strong>Tier 1-2</strong> (plus jobs whose place is unclear); when those run low, a note offers to include Tier 3-4. Your filters are remembered in this browser. <strong>Show everything</strong> clears them. (Tier 3-4 only has jobs from companies without a lower <strong>Max Tier</strong> on the Watchlist: the scan doesn't keep jobs outside a company's Max Tier. Raise it to see them from the next scan, or deep scan the company for older ones.)</li>
+<li><strong>Filters</strong> (press <strong>F</strong> to fold them away): Found (latest scan, this week, older), Tier, company Priority, Group (Referral/Top/Other), Years asked, Posted (this week, last 2 weeks, older), Role Type, Pay listed, and a search box. Tap a chip to show only those; tap again to undo; no chip in a row = all of them. Each chip shows how many jobs you'd see. <strong>Sort</strong> switches between newest found and your apply order on its own, keeping your filters. When a Tier filter leaves 5 or fewer jobs, a note offers to include the other tiers. (Tier 3-4 only has jobs from companies without a lower <strong>Max Tier</strong> on the Watchlist: the scan doesn't keep jobs outside a company's Max Tier. Raise it to see them from the next scan, or deep scan the company for older ones.)</li>
 <li><strong>Add (A)</strong> adds the job exactly like Check Jobs &gt; a. <strong>Skip (S)</strong> dismisses it; press a number for a reason (yours are on Settings &gt; <strong>Review: skip reasons</strong>), <strong>O</strong> to type your own, or Enter for none. <strong>Later (L)</strong> moves it to the end for now.</li>
 <li><strong>Interesting (I)</strong> is for jobs that aren't a fit now but are worth a side project (deep robotics, data/ML...). Pick a reason the same way (Settings &gt; <strong>Review: interesting reasons</strong>). The job leaves New Matches and goes on the <strong>Interesting</strong> tab of the workbook, and the full posting text is saved in <code>app/saved_postings</code> (the tab links to it), so you still have it after the posting is taken down.</li>
 <li>When you've decided on all 5, the next 5 load. Your decisions are recorded as you go and written to the workbook (and the jobs you added put on To Apply) when you press <strong>Save to workbook</strong> or <strong>Done: save and close</strong>, or close the Terminal window. If the tracker is open in Excel, close it first; anything not saved yet is saved the next time you open the screen.</li>
@@ -376,7 +376,7 @@ li { margin:.2em 0; }
 </tr>
 <tr>
 <td><strong>Interesting</strong></td>
-<td>Jobs you marked Interesting on the Review screen: not a fit now, worth a side project. Links to the saved posting text; a My notes column is yours.</td>
+<td>Jobs you marked Interesting on My Job Board: not a fit now, worth a side project. Links to the saved posting text; a My notes column is yours.</td>
 </tr>
 <tr>
 <td><strong>Needs Review / Activity Log</strong></td>
@@ -401,22 +401,22 @@ li { margin:.2em 0; }
 <li><strong>Company names</strong> are tidied when a job is added: <code>1000 KLA Corporation</code> → <code>KLA</code>, and a job on a company's own job board gets your Watchlist name for it.</li>
 </ul>
 <h2 id="the-apply-order">The apply order</h2>
-<p>One rule decides what to look at and apply to first. It's used by the Review screen, New Matches, To Apply and jobs.csv.</p>
+<p>One rule decides what to look at and apply to first. It's used by My Job Board, New Matches, To Apply and jobs.csv.</p>
 <ul>
-<li><strong>Groups</strong> (Settings, or the Review screen's Settings tab): <strong>Apply: referral companies</strong> and <strong>Apply: top companies</strong>, comma-separated. Every other company is Other. Names match like Co. Priority does, so a job filed under a company's legal name still counts.</li>
+<li><strong>Groups</strong> (Settings, or My Job Board's Settings tab): <strong>Apply: referral companies</strong> and <strong>Apply: top companies</strong>, comma-separated. Every other company is Other. Names match like Co. Priority does, so a job filed under a company's legal name still counts.</li>
 <li><strong>Order:</strong> jobs in Tier 1-2 first (Referral, then Top, then Other), then every other job in the same group order.</li>
 <li><strong>Order:</strong> by location Tier first: Tier 1, then Tier 2, then jobs whose place is unclear, then Tier 3, then Tier 4. Within a tier: Referral, then Top, then Other. So a Pittsburgh or Colorado Springs job from any company comes before a Tier 2 job at a top company.</li>
 <li><strong>Within a group:</strong> jobs whose <strong>Fit</strong> is below <strong>Apply: fit threshold</strong> (default 5) go last. The rest go by Fit in steps of 2 (8-10, then 6-8, ...); within a step, jobs asking 0-2 years come first, then "not stated", then more; then highest Fit; then newest posting.</li>
 <li><strong>Fit</strong> is the same 0-10 score on New Matches and To Apply (see <a href="#how-fit-works">How Fit works</a>); the AI can refine it on To Apply with Rescore Jobs.</li>
 </ul>
 <h3 id="how-fit-works">How Fit works</h3>
-<p>Fit (0-10) comes from the words in the posting (benefits and legal text ignored), your role order, and the years the job asks. Every card on the Review screen says why it got its score, e.g. <code>Keywords 8.5 · Role Design / R&amp;D +1 | Matched: injection molding (title), DFM, ... | Minus: RF</code>.</p>
+<p>Fit (0-10) comes from the words in the posting (benefits and legal text ignored), your role order, and the years the job asks. Every card on My Job Board says why it got its score, e.g. <code>Keywords 8.5 · Role Design / R&amp;D +1 | Matched: injection molding (title), DFM, ... | Minus: RF</code>.</p>
 <ul>
 <li><strong>Fit: core keywords</strong> count double, <strong>Fit keywords</strong> count once, and <strong>Fit: common words</strong> (test, design, CAD...) count about a third, so a posting can't score high just by saying "design" and "test". A word in the title counts 1.5x; a word mentioned twice or more in the posting counts fully, once counts half.</li>
 <li><strong>Fit: minus words</strong> lower the score: -3 in the title, -1.5 mentioned twice or more, -0.5 for one passing mention. They never hide a job.</li>
 <li><strong>Fit: role order</strong> lists Role Types from best to worst, groups separated by <code>&gt;</code>, e.g. <code>Design / R&amp;D &gt; Manufacturing &amp; Process, Quality &amp; Reliability, Test &amp; Validation, Integration &gt; Systems, Applications &amp; Field</code>. The first group gets +1, the last -2; types you don't list count as the middle. Blank = off.</li>
 <li><strong>Experience:</strong> a job asking far more years than you have is scaled down (a posting with the right words but 8+ years asked still scores low).</li>
-<li><strong>Check it against your own decisions:</strong> <code>app/decisions.csv</code> records what you added and skipped on the Review screen; the jobs you add should mostly score higher than the ones you skip. If a kind of job you like keeps scoring low, add its words to core keywords.</li>
+<li><strong>Check it against your own decisions:</strong> <code>app/decisions.csv</code> records what you added and skipped on My Job Board; the jobs you add should mostly score higher than the ones you skip. If a kind of job you like keeps scoring low, add its words to core keywords.</li>
 </ul>
 <h2 id="using-a-resume-builder">Using a resume builder</h2>
 <p>The tracker and a separate resume tool can work together through two plain files, without ever editing the same file:</p>
