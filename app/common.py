@@ -163,6 +163,19 @@ SETTINGS = [
     (H, "PRIORITY: FIT", None, None, False, None),
     ("fit_keywords", "Fit keywords", "", "Specific skills/tools/domains, comma-separated; phrases work (e.g. mechanical design, "
      "SolidWorks, medical device). Title matches count most; benefits/legal text is ignored. 6-15 specific terms beat generic words.", True, None),
+    ("fit_core", "Fit: core keywords (count double)", "",
+     "The skills and domains that define the jobs you want most, comma-separated (e.g. injection molding, DFM, "
+     "medical device). Each counts twice as much as a Fit keyword. Blank = none.", True, None),
+    ("fit_common", "Fit: common words (count a little)", "test, testing, design, CAD, mechanical, hardware, prototype",
+     "Words almost every engineering posting uses. They count about a third as much, even if they're also in Fit "
+     "keywords, so a posting can't score high on them alone.", True, None),
+    ("fit_minus", "Fit: minus words (lower the score)", "",
+     "Skills or fields you don't want (e.g. firmware, RF, machine learning). Each one in the title, or mentioned "
+     "twice in the posting, lowers the Fit score; one passing mention lowers it a little. Never hides a job.", True, None),
+    ("fit_role_order", "Fit: role order (best first)", "",
+     "Role Types from best to worst, groups separated by > and types within a group by commas, e.g. Design / R&D > "
+     "Manufacturing & Process, Quality & Reliability, Test & Validation > Systems. The first group gets +1 Fit, the "
+     "last group -2; types not listed count as the middle. Blank = off.", True, None),
     ("my_years", "My years of experience", 2, "Count internships/co-ops. Used to check each posting's 'X+ years required'.", True, None),
     ("my_degree", "My highest degree", "Bachelor's", "Bachelor's, Master's or PhD. When a posting offers a shorter "
      "experience requirement for a higher degree ('BS + 5 years or MS + 3 years'), yours is used.", True, None),
@@ -247,9 +260,13 @@ SETTINGS = [
     ("role_controls", "Role type: Controls & Robotics", "controls, control systems, automation, robotics, mechatronics, autonomy, GNC, guidance",
      "Titles with one of these words get Role Type = Controls & Robotics. Role types are checked top to bottom; the first that "
      "matches wins (anything else = Other).", True, None),
-    ("role_systems", "Role type: Systems & Integration", "systems engineer, system engineer, systems, integration",
-     "Titles with one of these words get Role Type = Systems & Integration. Role types are checked top to bottom; the first that "
+    ("role_integration", "Role type: Integration", "integration, integrator",
+     "Titles with one of these words get Role Type = Integration. Role types are checked top to bottom; the first that "
      "matches wins (anything else = Other).", True, None),
+    ("role_systems", "Role type: Systems", "systems engineer, system engineer, systems engineering, MBSE",
+     "Titles with one of these words get Role Type = Systems. Role types are checked top to bottom; the first that "
+     "matches wins (anything else = Other). 'System Product Design Engineer' isn't a systems job, so only 'systems "
+     "engineer' together counts.", True, None),
     ("role_design", "Role type: Design / R&D", "design, R&D, research, development, mechanical, product engineer, hardware, propulsion, thermal, structural, analyst, optical, optics, opto, sustaining",
      "Titles with one of these words get Role Type = Design / R&D. Role types are checked top to bottom; the first that "
      "matches wins (anything else = Other).", True, None),
@@ -279,6 +296,11 @@ SETTINGS = [
      "systems, thermal, math/controls, CFD, wrong field (CS/EE/wireless), link broken / closed, not interested",
      "The reasons offered when you skip a job on the Review screen (keys 1-9), comma-separated. 'Other' lets you type "
      "your own.", True, None),
+    ("review_interest_reasons", "Review: interesting reasons",
+     "deep robotics, data / ML, controls, cool company, side project idea",
+     "Offered when you mark a job Interesting on the Review screen (key I, then 1-9): jobs that aren't a fit now but "
+     "are worth a side project. They go on the Interesting tab, with the posting text saved in app/saved_postings.",
+     True, None),
     ("watch_skill_dealbreakers", "Watch: required-skill dealbreakers", "",
      "Phrases that filter a posting when they appear in a REQUIRED line, e.g. production code, React. Blank = off.",
      True, None),
@@ -311,7 +333,7 @@ SETTINGS = [
     ("copy_desc", "Copy posting to clipboard after adding", "Yes", "Yes/No. For pasting into an AI chat to tailor your resume.", False, None),
 ]
 SETTING_LABELS = {s[1]: s[0] for s in SETTINGS if s[0] != H}
-LEGACY_LABELS = {"Dealbreaker words": "dealbreakers",
+LEGACY_LABELS = {"Dealbreaker words": "dealbreakers", "Role type: Systems & Integration": "role_systems",
                  "Watch: first check of a company, show postings from the last (days)": "watch_days",
                  "Watch: only show postings from the last (days)": "watch_days"}  # labels from earlier versions
 
@@ -335,6 +357,7 @@ def split_list(v) -> list:
 
 # Earlier default values that a newer version improved: a cell still holding the old default gets the new one.
 OLD_DEFAULTS = {
+    "role_systems": ["systems engineer, system engineer, systems, integration"],
     "watch_senior_words": ["Senior, Sr, Snr, Staff, Principal, Prin, Princ, Lead, Leader, Manager, Mgr, Director, Dir, "
                            "Head of, Chief, Vice President, VP, SVP, EVP, Distinguished, Fellow"],
     "watch_my_fields": ["engineering, mechanical, MechE, BSME, MSME, civil, structural, aerospace, mechatronics, robotics, "
@@ -368,7 +391,7 @@ def read_settings(wb) -> dict:
     return out
 
 
-ROLE_TYPES = [("role_early", "Rotational / Early Career"), ("role_pm", "Project / Product Mgmt"), ("role_apps", "Applications & Field"), ("role_quality", "Quality & Reliability"), ("role_test", "Test & Validation"), ("role_mfg", "Manufacturing & Process"), ("role_controls", "Controls & Robotics"), ("role_systems", "Systems & Integration"), ("role_design", "Design / R&D")]
+ROLE_TYPES = [("role_early", "Rotational / Early Career"), ("role_pm", "Project / Product Mgmt"), ("role_apps", "Applications & Field"), ("role_quality", "Quality & Reliability"), ("role_test", "Test & Validation"), ("role_mfg", "Manufacturing & Process"), ("role_controls", "Controls & Robotics"), ("role_integration", "Integration"), ("role_systems", "Systems"), ("role_design", "Design / R&D")]
 TIER_REMOTE = 3   # Location Tier for remote jobs; Home = 1, an Areas row = its Tier (blank = 2), Region = 3, Elsewhere = 4
 AREA_DEFAULTS = []  # name, center ("City, ST" or a 2-letter state = whole state), radius miles, extra points. A new
 #                    tracker starts with none: you add the metros you'd move to on the Areas tab.

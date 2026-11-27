@@ -26,7 +26,7 @@ from requests import ConnectionError as NetError, HTTPError, Timeout
 
 import geo
 from common import APP_DIR, Tracker, num, split_list, today, to_date
-from scoring import _kw_rx, is_senior_title, keyword_score, role_of, senior_reason, title_has, track_of
+from scoring import _kw_rx, is_senior_title, keyword_score, kw_lists, role_of, senior_reason, title_has, track_of
 
 STATE_PATH = APP_DIR / "watch_state.json"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -1676,7 +1676,7 @@ def check_requirements(cands: list, s) -> None:
     import reqcheck
     from common import fmt_pay, parse_pay
     descs = fetch_descriptions(cands)
-    fit_kw = split_list(s.get("fit_keywords"))
+    kl = kw_lists(s)
     for c in cands:
         row, desc = c["row"], descs.get(c["pj"]["link"])
         if not desc:
@@ -1701,7 +1701,7 @@ def check_requirements(cands: list, s) -> None:
             if not row["filtered"] and ceiling and start >= ceiling:
                 row["filtered"], c["kind"] = (f"pay: starts at ${start:,.0f}, at or above your senior-level line "
                                               f"${ceiling:,.0f}"), "pay"
-        q, _, _ = keyword_score(c["pj"]["title"], desc, fit_kw)
+        q, _, _ = keyword_score(c["pj"]["title"], desc, kl["normal"], kl["core"], kl["common"], kl["minus"])
         if q is not None:
             row["quick"] = round(q, 1)
 
@@ -1920,7 +1920,8 @@ def run(tr, interactive=True, priorities=None, area=None, deep=None):
                 log[4] = f"outside the areas picked this time ({label})"
                 continue  # outside the area you asked for this time: not remembered, so a normal scan still shows it
             log[4] = "possible match"
-            fit_title, _, _ = keyword_score(pj["title"], "", split_list(s.get("fit_keywords")))
+            kl = kw_lists(s)
+            fit_title, _, _ = keyword_score(pj["title"], "", kl["normal"], kl["core"], kl["common"], kl["minus"])
             cands.append({"key": key, "comp": None, "pj": pj, "kind": None, "log": log,
                           "row": {"found": today(), "company": name, "title": pj["title"],
                                   "track": track_of(pj["title"], s), "role_type": role_of(pj["title"], s),
@@ -2150,7 +2151,7 @@ def fit_of(title, desc, s):
 def nm_order(r):
     """New Matches order: rows to decide (and ones marked Add) on top, greyed-out ones below, then rows already
     added or dismissed at the bottom. Within each group: the shared apply order (referral and top companies in
-    Tier 1-2 first...; see apply.py), or newest posting first if that isn't set up."""
+    Tier 1 first, then Tier 2...; see apply.py), or newest posting first if that isn't set up."""
     a = str(r.get("action") or "").strip().lower()
     group = 2 if a in ("added", "dismiss", "dismissed") else (0 if a == "add" or not r.get("filtered") else 1)
     if _RULES is not None:

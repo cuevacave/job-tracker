@@ -42,7 +42,7 @@ li { margin:.2em 0; }
 </ul>
 </li>
 <li><a href="#the-spreadsheet">The spreadsheet</a></li>
-<li><a href="#the-apply-order">The apply order</a></li>
+<li><a href="#the-apply-order">The apply order</a> and <a href="#how-fit-works">How Fit works</a></li>
 <li><a href="#using-a-resume-builder">Using a resume builder</a></li>
 <li><a href="#how-the-priority-score-works">How the Priority score works</a></li>
 <li><a href="#adding-a-company">Adding a company</a></li>
@@ -143,7 +143,11 @@ li { margin:.2em 0; }
 </tr>
 <tr>
 <td>Fit keywords: what you want to work on</td>
-<td><code>CAD, robotics, test, medical devices</code></td>
+<td><code>SolidWorks, robotics, medical devices, FEA</code></td>
+</tr>
+<tr>
+<td>Fit: core keywords (count double), common words (count a little), minus words, role order</td>
+<td>Optional; see <a href="#how-fit-works">How Fit works</a></td>
 </tr>
 <tr>
 <td>My background: 3–8 lines about your degree, experience, tools and what you want (and don't want)</td>
@@ -279,7 +283,7 @@ li { margin:.2em 0; }
 </tr>
 <tr>
 <td>Role Type</td>
-<td>Rotational / Early Career, Project / Product Mgmt, Applications &amp; Field, Quality &amp; Reliability, Test &amp; Validation, Manufacturing &amp; Process, Controls &amp; Robotics, Systems &amp; Integration, Design / R&amp;D, or Other (from the <strong>Role type:</strong> rows on Settings, checked top to bottom)</td>
+<td>Rotational / Early Career, Project / Product Mgmt, Applications &amp; Field, Quality &amp; Reliability, Test &amp; Validation, Manufacturing &amp; Process, Controls &amp; Robotics, Integration, Systems, Design / R&amp;D, or Other (from the <strong>Role type:</strong> rows on Settings, checked top to bottom)</td>
 </tr>
 <tr>
 <td>Tier</td>
@@ -317,9 +321,11 @@ li { margin:.2em 0; }
 <li><strong>To review</strong> shows your undecided New Matches, 5 at a time, in the <a href="#the-apply-order">apply order</a>. Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click <strong>Description</strong> or press <strong>E</strong>). The link is there too.</li>
 <li><strong>Watch-out words</strong> (Settings) are highlighted on the job and in its description, e.g. thermal or CFD. They never hide a job.</li>
 <li><strong>The same job in several places</strong> is one card listing each location; tick the ones you want and press Add (the others count as skipped).</li>
+<li><strong>Filters</strong> (press <strong>F</strong> to fold them away): Tier, company Priority, Group (Referral/Top/Other), Years asked, Posted (this week, last 2 weeks, older), Role Type, Pay listed, and a search box. Tap a chip to show only those; tap again to undo; no chip in a row = all of them. Each chip shows how many jobs you'd see. The screen opens on <strong>Tier 1-2</strong> (plus jobs whose place is unclear); when those run low, a note offers to include Tier 3-4. Your filters are remembered in this browser. <strong>Show everything</strong> clears them. (Tier 3-4 only has jobs from companies without a lower <strong>Max Tier</strong> on the Watchlist: the scan doesn't keep jobs outside a company's Max Tier. Raise it to see them from the next scan, or deep scan the company for older ones.)</li>
 <li><strong>Add (A)</strong> adds the job exactly like Check Jobs &gt; a. <strong>Skip (S)</strong> dismisses it; press a number for a reason (yours are on Settings &gt; <strong>Review: skip reasons</strong>), <strong>O</strong> to type your own, or Enter for none. <strong>Later (L)</strong> moves it to the end for now.</li>
+<li><strong>Interesting (I)</strong> is for jobs that aren't a fit now but are worth a side project (deep robotics, data/ML...). Pick a reason the same way (Settings &gt; <strong>Review: interesting reasons</strong>). The job leaves New Matches and goes on the <strong>Interesting</strong> tab of the workbook, and the full posting text is saved in <code>app/saved_postings</code> (the tab links to it), so you still have it after the posting is taken down.</li>
 <li>When you've decided on all 5, the next 5 load. Your decisions are recorded as you go and written to the workbook (and the jobs you added put on To Apply) when you press <strong>Save to workbook</strong> or <strong>Done: save and close</strong>, or close the Terminal window. If the tracker is open in Excel, close it first; anything not saved yet is saved the next time you open the screen.</li>
-<li><strong>Greyed</strong> shows the jobs the scan filtered; <strong>Skipped</strong> shows what you skipped, with a <strong>Bring back</strong> button; <strong>Settings</strong> edits your company groups, fit threshold and watch-out words.</li>
+<li><strong>Greyed</strong> shows the jobs the scan filtered (the filters work there too); <strong>Skipped</strong> and <strong>Interesting</strong> show what you skipped or saved, with a <strong>Bring back</strong> button; <strong>Settings</strong> edits your company groups, fit threshold, watch-out words and reasons.</li>
 <li><strong>Every decision is kept</strong> in <code>app/decisions.csv</code> (date, decision, reason and the job's details), so you can look back at what you add versus skip.</li>
 </ul>
 <h3 id="automatic-daily-scan">Automatic daily scan</h3>
@@ -369,6 +375,10 @@ li { margin:.2em 0; }
 <td>Rejected, Ghosted, Withdrawn, Skipped, Declined and Expired (posting taken down).</td>
 </tr>
 <tr>
+<td><strong>Interesting</strong></td>
+<td>Jobs you marked Interesting on the Review screen: not a fit now, worth a side project. Links to the saved posting text; a My notes column is yours.</td>
+</tr>
+<tr>
 <td><strong>Needs Review / Activity Log</strong></td>
 <td>From Check Email (see above).</td>
 </tr>
@@ -395,8 +405,18 @@ li { margin:.2em 0; }
 <ul>
 <li><strong>Groups</strong> (Settings, or the Review screen's Settings tab): <strong>Apply: referral companies</strong> and <strong>Apply: top companies</strong>, comma-separated. Every other company is Other. Names match like Co. Priority does, so a job filed under a company's legal name still counts.</li>
 <li><strong>Order:</strong> jobs in Tier 1-2 first (Referral, then Top, then Other), then every other job in the same group order.</li>
-<li><strong>Within a group:</strong> jobs whose <strong>Fit</strong> is below <strong>Apply: fit threshold</strong> (default 5) go last; then jobs asking 0-2 years, then "not stated", then more; then highest Fit; then newest posting.</li>
-<li><strong>Fit</strong> is the same 0-10 score on New Matches and To Apply, from your Fit keywords and the years the job asks (the AI can refine it on To Apply with Rescore Jobs).</li>
+<li><strong>Order:</strong> by location Tier first: Tier 1, then Tier 2, then jobs whose place is unclear, then Tier 3, then Tier 4. Within a tier: Referral, then Top, then Other. So a Pittsburgh or Colorado Springs job from any company comes before a Tier 2 job at a top company.</li>
+<li><strong>Within a group:</strong> jobs whose <strong>Fit</strong> is below <strong>Apply: fit threshold</strong> (default 5) go last. The rest go by Fit in steps of 2 (8-10, then 6-8, ...); within a step, jobs asking 0-2 years come first, then "not stated", then more; then highest Fit; then newest posting.</li>
+<li><strong>Fit</strong> is the same 0-10 score on New Matches and To Apply (see <a href="#how-fit-works">How Fit works</a>); the AI can refine it on To Apply with Rescore Jobs.</li>
+</ul>
+<h3 id="how-fit-works">How Fit works</h3>
+<p>Fit (0-10) comes from the words in the posting (benefits and legal text ignored), your role order, and the years the job asks. Every card on the Review screen says why it got its score, e.g. <code>Keywords 8.5 · Role Design / R&amp;D +1 | Matched: injection molding (title), DFM, ... | Minus: RF</code>.</p>
+<ul>
+<li><strong>Fit: core keywords</strong> count double, <strong>Fit keywords</strong> count once, and <strong>Fit: common words</strong> (test, design, CAD...) count about a third, so a posting can't score high just by saying "design" and "test". A word in the title counts 1.5x; a word mentioned twice or more in the posting counts fully, once counts half.</li>
+<li><strong>Fit: minus words</strong> lower the score: -3 in the title, -1.5 mentioned twice or more, -0.5 for one passing mention. They never hide a job.</li>
+<li><strong>Fit: role order</strong> lists Role Types from best to worst, groups separated by <code>&gt;</code>, e.g. <code>Design / R&amp;D &gt; Manufacturing &amp; Process, Quality &amp; Reliability, Test &amp; Validation, Integration &gt; Systems, Applications &amp; Field</code>. The first group gets +1, the last -2; types you don't list count as the middle. Blank = off.</li>
+<li><strong>Experience:</strong> a job asking far more years than you have is scaled down (a posting with the right words but 8+ years asked still scores low).</li>
+<li><strong>Check it against your own decisions:</strong> <code>app/decisions.csv</code> records what you added and skipped on the Review screen; the jobs you add should mostly score higher than the ones you skip. If a kind of job you like keeps scoring low, add its words to core keywords.</li>
 </ul>
 <h2 id="using-a-resume-builder">Using a resume builder</h2>
 <p>The tracker and a separate resume tool can work together through two plain files, without ever editing the same file:</p>
@@ -424,7 +444,7 @@ li { margin:.2em 0; }
 </tr>
 <tr>
 <td><strong>Fit</strong></td>
-<td>The AI compares the job's duties and requirements with your background, combined with your fit keywords and the experience level the job asks for.</td>
+<td>Your fit word lists and role order (see <a href="#how-fit-works">How Fit works</a>) and the experience level the job asks for; with the AI on, Rescore Jobs also has it compare the job's duties with your background.</td>
 </tr>
 <tr>
 <td><strong>Perks</strong></td>

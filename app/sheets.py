@@ -531,7 +531,7 @@ def finalize(wb):
     """Sheet order and opening tab. (The old How To tab is removed: the README replaces it.)"""
     if "How To" in wb.sheetnames:
         wb.remove(wb["How To"])
-    order = ["To Apply", "New Matches", "Applied", "Closed", "Needs Review", "Activity Log", "Watchlist", "Settings",
+    order = ["To Apply", "New Matches", "Applied", "Closed", "Interesting", "Needs Review", "Activity Log", "Watchlist", "Settings",
              "Areas"]
     wb._sheets.sort(key=lambda ws: order.index(ws.title) if ws.title in order else 99)
     for ws in wb.worksheets:
@@ -554,3 +554,70 @@ def new_workbook():
     define_names(wb)
     finalize(wb)
     return wb
+
+
+# ------------------------------------------------------------------ Interesting (saved for later: side projects)
+INT_HEAD = ["Saved", "Company", "Title", "Location", "Tier", "Why", "Fit", "Role Type", "Years", "Pay", "Posted",
+            "Requirements", "Link", "Posting text", "My notes"]
+INT_WIDTHS = [10, 18, 44, 24, 6, 22, 6, 18, 7, 18, 10, 34, 40, 34, 40]
+
+
+def interesting_sheet(wb):
+    """The Interesting tab (jobs that aren't a fit now but are worth a side project), made if missing."""
+    if "Interesting" in wb.sheetnames:
+        return wb["Interesting"]
+    at = wb.sheetnames.index("Closed") + 1 if "Closed" in wb.sheetnames else len(wb.sheetnames)
+    ws = wb.create_sheet("Interesting", at)
+    ws.sheet_properties.tabColor = "7A5AF8"
+    _hdr(ws, INT_HEAD, INT_WIDTHS)
+    ws.freeze_panes = "D2"
+    return ws
+
+
+def add_interesting(wb, items):
+    """items: dicts with the New Matches row keys plus why, file (path of the saved posting text, relative to the
+    workbook). A job already on the tab (same link) isn't added twice."""
+    ws = interesting_sheet(wb)
+    col = {h: i + 1 for i, h in enumerate(INT_HEAD)}
+    have = {str(ws.cell(r, col["Link"]).value or "") for r in range(2, ws.max_row + 1)}
+    for it in items:
+        link = str(it.get("link") or "")
+        if link and link in have:
+            continue
+        have.add(link)
+        r = ws.max_row + 1
+        vals = {"Saved": dt.datetime.combine(dt.date.today(), dt.time()), "Company": it.get("company"),
+                "Title": it.get("title"), "Location": it.get("location"), "Tier": it.get("loc_tier"),
+                "Why": it.get("why"), "Fit": it.get("fit"), "Role Type": it.get("role_type"), "Years": it.get("years"),
+                "Pay": it.get("pay"), "Posted": it.get("posted"), "Requirements": it.get("requirements"),
+                "Link": link or None, "Posting text": it.get("file")}
+        for h, v in vals.items():
+            if isinstance(v, str) and h in ("Posted",):
+                try:
+                    v = dt.datetime.fromisoformat(v[:10])
+                except ValueError:
+                    pass
+            c = ws.cell(r, col[h], v)
+            c.font, c.border = BODY, GRID
+            if h in ("Saved", "Posted"):
+                c.number_format = "m/d/yy"
+        ws.cell(r, col["My notes"]).border = GRID
+        if link.startswith("http"):
+            c = ws.cell(r, col["Link"])
+            c.hyperlink = link
+            c.font = Font(name=FONT, size=10, color="0563C1", underline="single")
+        if it.get("file"):
+            c = ws.cell(r, col["Posting text"])
+            c.hyperlink = it["file"]
+            c.font = Font(name=FONT, size=10, color="0563C1", underline="single")
+    ws.auto_filter.ref = f"A1:{ws.cell(1, len(INT_HEAD)).column_letter}{max(2, ws.max_row)}"
+
+
+def remove_interesting(wb, links):
+    if "Interesting" not in wb.sheetnames or not links:
+        return
+    ws = wb["Interesting"]
+    col = INT_HEAD.index("Link") + 1
+    for r in range(ws.max_row, 1, -1):
+        if str(ws.cell(r, col).value or "") in links:
+            ws.delete_rows(r)

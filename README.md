@@ -23,7 +23,7 @@ It's built for people who apply to a lot of jobs and are tired of copying titles
   - [Check Email](#check-email)
   - [Rescore Jobs](#rescore-jobs)
 - [The spreadsheet](#the-spreadsheet)
-- [The apply order](#the-apply-order)
+- [The apply order](#the-apply-order) and [How Fit works](#how-fit-works)
 - [Using a resume builder](#using-a-resume-builder)
 - [How the Priority score works](#how-the-priority-score-works)
 - [Adding a company](#adding-a-company)
@@ -93,7 +93,8 @@ Open **Job_Tracker.xlsx** and fill in the **yellow cells**. Most results depend 
 |---|---|
 | Home (city, state) and max commute | `Denver, CO`, 40 miles |
 | Target and minimum total pay | 95000 / 75000 |
-| Fit keywords: what you want to work on | `CAD, robotics, test, medical devices` |
+| Fit keywords: what you want to work on | `SolidWorks, robotics, medical devices, FEA` |
+| Fit: core keywords (count double), common words (count a little), minus words, role order | Optional; see [How Fit works](#how-fit-works) |
 | My background: 3–8 lines about your degree, experience, tools and what you want (and don't want) | Used by the AI to rate fit |
 | My years of experience | 2 |
 | My highest degree | `Bachelor's`, `Master's` or `PhD`. Used when a posting asks "BS + 5 years or MS + 3 years" |
@@ -184,7 +185,7 @@ All the lists are on Settings under **JOB WATCHER** (filter years, degree fields
 | Column | What it means |
 |---|---|
 | Track | `Engineering` or `PM / Customer` (from **Track:** words on Settings) |
-| Role Type | Rotational / Early Career, Project / Product Mgmt, Applications & Field, Quality & Reliability, Test & Validation, Manufacturing & Process, Controls & Robotics, Systems & Integration, Design / R&D, or Other (from the **Role type:** rows on Settings, checked top to bottom) |
+| Role Type | Rotational / Early Career, Project / Product Mgmt, Applications & Field, Quality & Reliability, Test & Validation, Manufacturing & Process, Controls & Robotics, Integration, Systems, Design / R&D, or Other (from the **Role type:** rows on Settings, checked top to bottom) |
 | Tier | 1 = Home, an Areas row = its Tier, 3 = Region and remote, 4 = elsewhere in the US |
 | Years | Years of experience the posting requires for your degree. Blank = not stated. Filter it, e.g. 0–2 plus blanks |
 | Co. Priority | The company's Watchlist priority |
@@ -211,9 +212,11 @@ Double-click **Review Jobs** (first time: in Terminal, type `bash `, drag **Revi
 - **To review** shows your undecided New Matches, 5 at a time, in the [apply order](#the-apply-order). Each job shows its company and group, title, years asked, Fit, pay, posted date, locations and tiers, requirements, the fit notes, and the full saved description (click **Description** or press **E**). The link is there too.
 - **Watch-out words** (Settings) are highlighted on the job and in its description, e.g. thermal or CFD. They never hide a job.
 - **The same job in several places** is one card listing each location; tick the ones you want and press Add (the others count as skipped).
+- **Filters** (press **F** to fold them away): Tier, company Priority, Group (Referral/Top/Other), Years asked, Posted (this week, last 2 weeks, older), Role Type, Pay listed, and a search box. Tap a chip to show only those; tap again to undo; no chip in a row = all of them. Each chip shows how many jobs you'd see. The screen opens on **Tier 1-2** (plus jobs whose place is unclear); when those run low, a note offers to include Tier 3-4. Your filters are remembered in this browser. **Show everything** clears them. (Tier 3-4 only has jobs from companies without a lower **Max Tier** on the Watchlist: the scan doesn't keep jobs outside a company's Max Tier. Raise it to see them from the next scan, or deep scan the company for older ones.)
 - **Add (A)** adds the job exactly like Check Jobs > a. **Skip (S)** dismisses it; press a number for a reason (yours are on Settings > **Review: skip reasons**), **O** to type your own, or Enter for none. **Later (L)** moves it to the end for now.
+- **Interesting (I)** is for jobs that aren't a fit now but are worth a side project (deep robotics, data/ML...). Pick a reason the same way (Settings > **Review: interesting reasons**). The job leaves New Matches and goes on the **Interesting** tab of the workbook, and the full posting text is saved in `app/saved_postings` (the tab links to it), so you still have it after the posting is taken down.
 - When you've decided on all 5, the next 5 load. Your decisions are recorded as you go and written to the workbook (and the jobs you added put on To Apply) when you press **Save to workbook** or **Done: save and close**, or close the Terminal window. If the tracker is open in Excel, close it first; anything not saved yet is saved the next time you open the screen.
-- **Greyed** shows the jobs the scan filtered; **Skipped** shows what you skipped, with a **Bring back** button; **Settings** edits your company groups, fit threshold and watch-out words.
+- **Greyed** shows the jobs the scan filtered (the filters work there too); **Skipped** and **Interesting** show what you skipped or saved, with a **Bring back** button; **Settings** edits your company groups, fit threshold, watch-out words and reasons.
 - **Every decision is kept** in `app/decisions.csv` (date, decision, reason and the job's details), so you can look back at what you add versus skip.
 
 ### Automatic daily scan
@@ -250,6 +253,7 @@ After changing your keywords, background, pay target or AI model, double-click *
 | **New Matches** | New postings from Check Jobs, waiting for you to Add or Dismiss. Greyed rows were filtered (reason in the Filtered column). |
 | **Applied** | Applications in progress; anything needing action is at the top. |
 | **Closed** | Rejected, Ghosted, Withdrawn, Skipped, Declined and Expired (posting taken down). |
+| **Interesting** | Jobs you marked Interesting on the Review screen: not a fit now, worth a side project. Links to the saved posting text; a My notes column is yours. |
 | **Needs Review / Activity Log** | From Check Email (see above). |
 | **Watchlist** | Companies for Check Jobs. |
 | **Settings / Areas** | Your preferences (see [First things to set](#first-things-to-set)). |
@@ -267,8 +271,19 @@ One rule decides what to look at and apply to first. It's used by the Review scr
 
 - **Groups** (Settings, or the Review screen's Settings tab): **Apply: referral companies** and **Apply: top companies**, comma-separated. Every other company is Other. Names match like Co. Priority does, so a job filed under a company's legal name still counts.
 - **Order:** jobs in Tier 1-2 first (Referral, then Top, then Other), then every other job in the same group order.
-- **Within a group:** jobs whose **Fit** is below **Apply: fit threshold** (default 5) go last; then jobs asking 0-2 years, then "not stated", then more; then highest Fit; then newest posting.
-- **Fit** is the same 0-10 score on New Matches and To Apply, from your Fit keywords and the years the job asks (the AI can refine it on To Apply with Rescore Jobs).
+- **Order:** by location Tier first: Tier 1, then Tier 2, then jobs whose place is unclear, then Tier 3, then Tier 4. Within a tier: Referral, then Top, then Other. So a Pittsburgh or Colorado Springs job from any company comes before a Tier 2 job at a top company.
+- **Within a group:** jobs whose **Fit** is below **Apply: fit threshold** (default 5) go last. The rest go by Fit in steps of 2 (8-10, then 6-8, ...); within a step, jobs asking 0-2 years come first, then "not stated", then more; then highest Fit; then newest posting.
+- **Fit** is the same 0-10 score on New Matches and To Apply (see [How Fit works](#how-fit-works)); the AI can refine it on To Apply with Rescore Jobs.
+
+### How Fit works
+
+Fit (0-10) comes from the words in the posting (benefits and legal text ignored), your role order, and the years the job asks. Every card on the Review screen says why it got its score, e.g. `Keywords 8.5 · Role Design / R&D +1 | Matched: injection molding (title), DFM, ... | Minus: RF`.
+
+- **Fit: core keywords** count double, **Fit keywords** count once, and **Fit: common words** (test, design, CAD...) count about a third, so a posting can't score high just by saying "design" and "test". A word in the title counts 1.5x; a word mentioned twice or more in the posting counts fully, once counts half.
+- **Fit: minus words** lower the score: -3 in the title, -1.5 mentioned twice or more, -0.5 for one passing mention. They never hide a job.
+- **Fit: role order** lists Role Types from best to worst, groups separated by `>`, e.g. `Design / R&D > Manufacturing & Process, Quality & Reliability, Test & Validation, Integration > Systems, Applications & Field`. The first group gets +1, the last -2; types you don't list count as the middle. Blank = off.
+- **Experience:** a job asking far more years than you have is scaled down (a posting with the right words but 8+ years asked still scores low).
+- **Check it against your own decisions:** `app/decisions.csv` records what you added and skipped on the Review screen; the jobs you add should mostly score higher than the ones you skip. If a kind of job you like keeps scoring low, add its words to core keywords.
 
 ## Using a resume builder
 
@@ -285,7 +300,7 @@ Priority (0–100) is a weighted average of four scores out of 10 each. The weig
 |---|---|
 | **Location** | Home (within your commute) scores highest, then your Areas in order, then your preferred states (Region), then elsewhere. Remote and hybrid scores depend on office days per week. |
 | **Pay** | Estimated total comp (base + bonus + 401k match + sign-on spread over 2 years) compared with your minimum and target. Missing pay gets a neutral score. |
-| **Fit** | The AI compares the job's duties and requirements with your background, combined with your fit keywords and the experience level the job asks for. |
+| **Fit** | Your fit word lists and role order (see [How Fit works](#how-fit-works)) and the experience level the job asks for; with the AI on, Rescore Jobs also has it compare the job's duties with your background. |
 | **Perks** | Points per perk found in the posting (equity, strong health, PTO, gym, WFH stipend…). |
 
 Every perk the AI reports is checked against the posting's own words, and the sentence it came from is saved, so you can always see why.

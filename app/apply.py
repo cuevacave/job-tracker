@@ -4,10 +4,11 @@ Groups come from two Settings rows (your data, kept in the workbook): "Apply: re
 "Apply: top companies". Every other company is Other.
 
 Order:
-  1. jobs in Tier 1-2: Referral, then Top, then Other
-  2. every other job (Tier 3-4, remote, unknown place): Referral, then Top, then Other
-Within each group: jobs whose fit is below "Apply: fit threshold" go last (never hidden); then years asked
-0-2, then not stated, then more; then fit, highest first; then newest posting first.
+  1. Location Tier: Tier 1 first, then Tier 2, then jobs whose place is unclear, then Tier 3, then Tier 4
+  2. within a tier: Referral, then Top, then Other
+  3. within a group: jobs whose fit is below "Apply: fit threshold" go last (never hidden); then fit in steps of 2
+     (8-10, 6-8, ...); within a step, years asked 0-2, then not stated, then more; then fit, highest first;
+     then newest posting first.
 """
 from __future__ import annotations
 
@@ -94,13 +95,15 @@ class ApplyRules:
         """Sort key: smaller = apply first."""
         g = GROUPS.index(self.group(company, link))
         t = _num(tier)
-        block = 0 if t is not None and t <= 2 else 1
+        t = 2.5 if t is None else t
         f = _num(fit)
         low = 1 if (f is not None and f < self.fit_min) else 0
+        fv = f if f is not None else 5.0
+        band = min(4, int(fv // 2))  # 8-10, 6-8, 4-6, 2-4, 0-2
         y = years_number(years)
         yb = 0 if (y is not None and y <= 2) else (1 if y is None else 2)
         p = _date(posted)
-        return (block, g, low, yb, -(f if f is not None else 5.0), -(p.toordinal() if p else 0))
+        return (t, g, low, -band, yb, -fv, -(p.toordinal() if p else 0))
 
     def job_key(self, j: dict):
         """For a tracker job (To Apply / jobs.csv)."""

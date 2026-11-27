@@ -280,7 +280,13 @@ def senior_reason(title: str, s=None, ignore=()):
     role = re.compile(r"engineer|manager|analyst|scientist|designer|specialist|architect|technician|developer|"
                       r"director|lead\b|consultant|associate|coordinator", re.I)
     t_np = re.sub(r"\([^)]*\)", " ", t)  # '(Operations/Manufacturing)' is not a second level
+    # each choice must end in a role ('Engineer II / Senior Engineer'); 'Sr. Associate, Integration / Test
+    # Engineer' is one senior title with two specialties, not two levels
+    tail = re.compile(r"(?:" + role.pattern + r")\w*(?:\s+(?:[IVX]+|\d))?\W*$", re.I)
     parts = [x for x in re.split(r"\s*/\s*|\s+or\s+", t_np, flags=re.I) if role.search(x)]
+    if len(parts) >= 2 and not all(tail.search(re.split(r"\s+[-–—:]\s+", x)[0].strip()) or tail.search(x.strip())
+                                   for x in parts):
+        parts = []
     if len(parts) >= 2 and any(reason(x) is None for x in parts):
         return None
     return reason(t)
@@ -375,24 +381,74 @@ def _kw_rx(k):
     return re.compile(r"(?<!\w)" + re.escape(base).replace(r"\ ", r"[\s-]") + r"s?(?!\w)", re.I)
 
 
-def keyword_score(title, desc, kws):
-    """Title matches count most; mentions in benefits/legal text don't count; 5 strong matches = 10/10."""
-    if not kws:
-        return None, [], []
+def kw_lists(s) -> dict:
+    """Your fit word lists from Settings: core (x2), normal Fit keywords (x1), common words (x0.3) and minus words."""
+    from common import split_list
+    s = s or {}
+    common = split_list(s.get("fit_common"))
+    low = {c.lower() for c in common}
+    core = [k for k in split_list(s.get("fit_core")) if k.lower() not in low]
+    have = low | {c.lower() for c in core}
+    normal = [k for k in split_list(s.get("fit_keywords")) if k.lower() not in have]
+    return {"core": core, "normal": normal, "common": common, "minus": split_list(s.get("fit_minus"))}
+
+
+W_CORE, W_NORMAL, W_COMMON = 2.0, 1.0, 0.3
+KW_TARGET = 10.0  # this much credit = 10/10 (e.g. five core skills each mentioned twice)
+
+
+def keyword_score(title, desc, kws, core=(), common=(), minus=()):
+    """0-10 from the fit word lists. A word in the title counts 1.5x, mentioned twice or more in the posting 1x, once
+    0.5x; times its weight (core 2, Fit keywords 1, common words 0.3). Minus words subtract: -3 in the title, -1.5
+    mentioned twice or more, -0.5 once. Benefits/legal text is ignored. Returns (score, hits, missing)."""
+    if not core and not kws:
+        return None, [], []  # no keywords of your own yet: Fit stays neutral on words
+    lists = [(k, W_CORE) for k in core] + [(k, W_NORMAL) for k in kws] + [(k, W_COMMON) for k in common]
     rel = relevant_text(desc)
-    credit, hits = 0.0, []
-    for k in kws:
+    credit, hits, missing = 0.0, [], []
+    for k, w in lists:
         rx = _kw_rx(k)
         if rx.search(title or ""):
-            credit += 1.5
+            credit += 1.5 * w
             hits.append(k + " (title)")
         else:
             n = len(rx.findall(rel))
             if n:
-                credit += 1.0 if n >= 2 else 0.5
+                credit += (1.0 if n >= 2 else 0.5) * w
                 hits.append(k)
-    missing = [k for k in kws if not any(h.split(" (")[0] == k for h in hits)]
-    return min(10.0, 10 * credit / min(len(kws), 5)), hits, missing
+            elif w >= W_NORMAL:
+                missing.append(k)
+    target = min(KW_TARGET, sum(w for _, w in lists if w >= W_NORMAL) or KW_TARGET)
+    score = 10 * credit / target
+    for k in minus:
+        rx = _kw_rx(k)
+        if rx.search(title or ""):
+            score -= 3.0
+            hits.append("minus " + k + " (title)")
+        else:
+            n = len(rx.findall(rel))
+            if n:
+                score -= 1.5 if n >= 2 else 0.5
+                hits.append("minus " + k)
+    return max(0.0, min(10.0, score)), hits, missing
+
+
+def role_bonus(title, s) -> tuple:
+    """(+1 / 0 / -2, role type) from Settings > Fit: role order. First group +1, last group -2, the rest 0."""
+    order = str((s or {}).get("fit_role_order") or "").strip()
+    if not order:
+        return 0.0, None
+    groups = [[x.strip().lower() for x in g.split(",") if x.strip()] for g in order.split(">")]
+    groups = [g for g in groups if g]
+    role = role_of(title, s)
+    for i, g in enumerate(groups):
+        if role.lower() in g:
+            if i == 0:
+                return 1.0, role
+            if i == len(groups) - 1 and len(groups) > 1:
+                return -2.0, role
+            return 0.0, role
+    return 0.0, role
 
 
 AI_FIT_SCHEMA = {
@@ -430,7 +486,9 @@ def fit(job: dict, s: dict, ai=None):
     import reqcheck
     req = reqcheck.years_required(desc, reqcheck.my_degree_level(s), s.get("watch_pref_words"))[0]
     lvl = level_score(req, my_years, title, s)
-    kw, hits, missing = keyword_score(title, desc, split_list(s.get("fit_keywords")))
+    kl = kw_lists(s)
+    kw, hits, missing = keyword_score(title, desc, kl["normal"], kl["core"], kl["common"], kl["minus"])
+    rb, role = role_bonus(title, s)
 
     ai_res = None
     bg = str(s.get("background") or "").strip()
@@ -451,6 +509,8 @@ def fit(job: dict, s: dict, ai=None):
     else:
         level = lvl
         relevance = kw if kw is not None else 5.0
+    if rb:
+        relevance = max(0.0, min(10.0, relevance + rb))
     level_factor = 0.4 + 0.06 * level if level is not None else 0.9
     score = relevance * level_factor
 
@@ -461,6 +521,8 @@ def fit(job: dict, s: dict, ai=None):
         bits.append(f"Level {level:g}" + (f" (asks {req}+ yrs)" if req is not None else ""))
     if kw is not None:
         bits.append(f"Keywords {rhu(kw, 1):g}")
+    if rb:
+        bits.append(f"Role {role} {rb:+g}")
     notes = [" · ".join(bits)]
     if ai_res and ai_res["strengths"]:
         notes.append("+ " + ", ".join(ai_res["strengths"]))
@@ -468,9 +530,13 @@ def fit(job: dict, s: dict, ai=None):
         notes.append("- " + ", ".join(ai_res["gaps"]))
     if ai_res and ai_res["verdict"]:
         notes.append("AI: " + ai_res["verdict"])
-    if hits:
-        notes.append("Matched: " + ", ".join(hits))
-    if missing and not ai_res:
+    plus = [h for h in hits if not h.startswith("minus ")]
+    minus_hits = [h[6:] for h in hits if h.startswith("minus ")]
+    if plus:
+        notes.append("Matched: " + ", ".join(plus))
+    if minus_hits:
+        notes.append("Minus: " + ", ".join(minus_hits))
+    if missing and not ai_res and len(missing) + len(plus) <= 12:  # a long list of misses is noise
         notes.append("Missing: " + ", ".join(missing))
     if tb or pb:
         score = 0.0

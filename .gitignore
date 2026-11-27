@@ -24,3 +24,4 @@ app/auto_scan.json
 app/auto_scan.lock
 app/decisions.csv
 app/review_pending.json
+app/saved_postings/
