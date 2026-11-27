@@ -18,7 +18,7 @@ import openpyxl  # noqa: E402
 import requests  # noqa: E402
 from openpyxl.utils import get_column_letter  # noqa: E402
 
-APP_VERSION = "27"
+APP_VERSION = "28"
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
 WB_PATH = ROOT / "Job_Tracker.xlsx"
